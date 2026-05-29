@@ -3,21 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
-  <title>灵译 · 文档翻译神器</title>
+  <title>灵译 · 翻译与转换神器</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
+    /* 全局样式 */
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: 'Inter', sans-serif;
       background: linear-gradient(145deg, #f0f4fd 0%, #e6ebf7 100%);
       min-height: 100vh; display: flex; justify-content: center;
       color: #1e293b; padding: 1rem;
     }
-    .app-wrapper { width:100%; max-width:1200px; display:flex; flex-direction:column; gap:1.5rem; padding-bottom:1rem; }
+    .app-wrapper { width:100%; max-width:1200px; display:flex; flex-direction:column; gap:1.5rem; }
     .card {
       background: rgba(255,255,255,0.75); backdrop-filter: blur(20px);
       border-radius: 2rem; padding: 1.5rem;
@@ -61,15 +62,22 @@
     .btn-danger { background:#ef4444; color:white; }
     .btn-sm { padding:0.3rem 0.8rem; font-size:0.75rem; }
 
+    .tabs { display:flex; gap:0.5rem; margin-bottom:1.5rem; flex-wrap:wrap; }
+    .tab-btn {
+      background:white; border:1.5px solid #e2e8f0; color:#64748b;
+      padding:0.5rem 1.5rem; border-radius:2rem; font-weight:600;
+      cursor:pointer; transition:0.2s;
+    }
+    .tab-btn.active { background:#4f6ef7; color:white; border-color:#4f6ef7; }
+
     .upload-area {
-      border:2px dashed #cbd5e1; border-radius:1.5rem; padding:1.8rem;
+      border:2px dashed #cbd5e1; border-radius:1.5rem; padding:2rem;
       text-align:center; cursor:pointer; background:rgba(248,250,252,0.7);
       margin:1rem 0; transition:0.2s;
     }
     .upload-area i { font-size:2rem; color:#4f6ef7; margin-bottom:0.5rem; }
-    .upload-area .upload-title { font-weight:600; font-size:1rem; }
-    .upload-area .upload-hint { font-size:0.8rem; color:#64748b; }
     .upload-area.drag-over { border-color:#4f6ef7; background:#eef2ff; }
+    .upload-hint { font-size:0.8rem; color:#64748b; }
 
     .file-item {
       background: white; border-radius:1rem; padding:0.8rem;
@@ -79,12 +87,10 @@
     .file-icon { font-size:1.5rem; color:#4f6ef7; }
     .file-info { flex:1; min-width:140px; }
     .file-name { font-weight:600; font-size:0.9rem; }
-    .progress-wrap { display:flex; align-items:center; gap:0.6rem; margin-top:0.2rem; }
     .progress-bar { width:80px; height:5px; background:#e2e8f0; border-radius:10px; overflow:hidden; }
     .progress-fill { height:100%; background:#4f6ef7; width:0%; transition:0.3s; }
-    .status-text { font-size:0.7rem; color:#475569; }
     .file-actions { display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; }
-    .file-actions select {
+    select {
       padding:0.3rem 0.6rem; border-radius:0.6rem; border:1px solid #e2e8f0;
       font-size:0.75rem; background:white; appearance:none;
       background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="%23475669" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>');
@@ -101,6 +107,7 @@
       background:white; border-radius:1.5rem; padding:1.5rem; max-width:600px;
       width:90%; max-height:80vh; overflow-y:auto;
       box-shadow:0 30px 50px rgba(0,0,0,0.3);
+      text-align: left;
     }
     .close-modal { float:right; cursor:pointer; font-size:1.4rem; color:#94a3b8; }
     .form-group { margin-bottom:1rem; }
@@ -110,7 +117,7 @@
     }
     .record-item {
       background:#f8fafc; border-radius:0.8rem; padding:0.7rem; margin-bottom:0.5rem;
-      border:1px solid #e2e8f0; font-size:0.8rem; text-align: left;
+      border:1px solid #e2e8f0; font-size:0.8rem;
     }
     .toast-notification {
       position:fixed; bottom:2rem; right:2rem; background:#1e293b; color:white;
@@ -132,8 +139,6 @@
       background: rgba(255,255,255,0.6); padding:0.6rem; border-radius:1.5rem;
       backdrop-filter: blur(10px); margin-top:0.5rem;
     }
-    .test-network { text-align:right; margin-bottom:0.5rem; font-size:0.75rem; }
-    .test-network a { color:#4f6ef7; cursor:pointer; text-decoration:underline; font-weight:500; }
   </style>
 </head>
 <body>
@@ -144,7 +149,7 @@
       <div class="brand-icon"><i class="fas fa-language"></i></div>
       <div class="brand-text">
         <h1>灵译</h1>
-        <span>文档翻译神器</span>
+        <span>文档翻译与格式转换神器</span>
       </div>
     </div>
     <div style="display:flex; align-items:center; gap:1.5rem;">
@@ -156,39 +161,53 @@
         <button class="btn btn-outline btn-sm" id="logoutBtn" style="display:none;"><i class="fas fa-sign-out-alt"></i> 退出</button>
       </div>
       <div class="qr-section" id="qrSection">
-        <div class="qr-code-wrapper">
-          <div class="qr-code-inner" id="qrContainer"></div>
-        </div>
+        <div class="qr-code-wrapper"><div class="qr-code-inner" id="qrContainer"></div></div>
         <span class="qr-text">扫码打开</span>
       </div>
     </div>
   </div>
 
-  <!-- 上传及处理 -->
+  <!-- 功能标签 -->
   <div class="card">
-    <div class="test-network">
-      <a id="testApiBtn"><i class="fas fa-plug"></i> 测试翻译网络</a>
+    <div class="tabs">
+      <button class="tab-btn active" id="translateTabBtn">🌐 文档翻译</button>
+      <button class="tab-btn" id="convertTabBtn">🔄 格式转换</button>
     </div>
-    <div class="upload-area" id="uploadTrigger">
-      <i class="fas fa-cloud-upload-alt"></i>
-      <div class="upload-title">点击上传文件（文档 / 图片）</div>
-      <div class="upload-hint">支持 PDF · Word · TXT · 图片 · 拍照识别</div>
-      <input type="file" id="fileInput" hidden multiple accept="*/*">
+
+    <!-- 翻译模块 -->
+    <div id="translateModule">
+      <div class="upload-area" id="translateUpload">
+        <i class="fas fa-cloud-upload-alt"></i>
+        <div class="upload-title">点击上传需翻译的文件</div>
+        <div class="upload-hint">PDF · Word · TXT · 图片</div>
+        <input type="file" id="translateFileInput" hidden multiple accept="*/*">
+      </div>
+      <div id="translateFileList"></div>
     </div>
-    <div id="processingList" style="margin-top:1rem;"></div>
+
+    <!-- 转换模块 -->
+    <div id="convertModule" style="display:none;">
+      <div class="upload-area" id="convertUpload">
+        <i class="fas fa-exchange-alt"></i>
+        <div class="upload-title">点击上传需转换格式的文件</div>
+        <div class="upload-hint">支持 PDF · Word · TXT · 图片（转换为其他格式）</div>
+        <input type="file" id="convertFileInput" hidden multiple accept="*/*">
+      </div>
+      <div id="convertFileList"></div>
+    </div>
   </div>
 
-  <!-- 已完成 -->
+  <!-- 已完成列表 -->
   <div class="card">
     <div style="font-weight:600; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem;">
       <i class="fas fa-check-circle" style="color:#10b981;"></i> 已完成的文档
     </div>
     <div id="completedList">
-      <div style="color:#94a3b8; text-align:center; padding:2rem;">暂无完成的翻译文档</div>
+      <div style="color:#94a3b8; text-align:center; padding:2rem;">暂无完成的文档</div>
     </div>
   </div>
 
-  <div class="footer-hint">🔐 登录查看翻译记录</div>
+  <div class="footer-hint">🔐 登录查看翻译记录 | 通过自有代理稳定翻译</div>
 </div>
 
 <!-- 二维码放大模态框 -->
@@ -196,9 +215,7 @@
   <div class="modal-content" style="max-width:350px;">
     <span class="close-modal" id="closeQrZoom">&times;</span>
     <div class="qr-large-container">
-      <div class="qr-large-wrapper">
-        <div class="qr-large-inner" id="qrLargeContainer"></div>
-      </div>
+      <div class="qr-large-wrapper"><div class="qr-large-inner" id="qrLargeContainer"></div></div>
       <h3 style="font-weight:700; font-size:1.3rem; background:linear-gradient(135deg, #4f6ef7, #7b5cff); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">灵译</h3>
       <p style="font-size:0.8rem; color:#64748b;">扫描二维码打开应用</p>
     </div>
@@ -207,27 +224,19 @@
 
 <!-- 登录模态框 -->
 <div class="modal" id="loginModal">
-  <div class="modal-content" style="text-align:left;">
+  <div class="modal-content">
     <span class="close-modal" id="closeLoginModal">&times;</span>
     <h3 style="margin-bottom:1rem; text-align:center;"><i class="fas fa-sign-in-alt"></i> 账号登录</h3>
-    <div class="form-group">
-      <label>账号</label>
-      <input type="text" id="loginUsername" placeholder="输入账号">
-    </div>
-    <div class="form-group">
-      <label>密码</label>
-      <input type="password" id="loginPassword" placeholder="输入密码">
-    </div>
+    <div class="form-group"><label>账号</label><input type="text" id="loginUsername" placeholder="输入账号"></div>
+    <div class="form-group"><label>密码</label><input type="password" id="loginPassword" placeholder="输入密码"></div>
     <button class="btn btn-primary" id="doLoginBtn" style="width:100%;">登录</button>
-    <p style="margin-top:0.8rem; font-size:0.75rem; color:#64748b; text-align:center;">
-      没有账号？输入账号密码后将自动注册并登录。
-    </p>
+    <p style="margin-top:0.8rem; font-size:0.75rem; color:#64748b; text-align:center;">没有账号？输入账号密码后将自动注册并登录。</p>
   </div>
 </div>
 
 <!-- 历史记录模态框 -->
 <div class="modal" id="historyModal">
-  <div class="modal-content" style="text-align:left;">
+  <div class="modal-content">
     <span class="close-modal" id="closeHistoryModal">&times;</span>
     <h3 style="margin-bottom:1rem;"><i class="fas fa-history"></i> 我的使用记录 (30天)</h3>
     <div id="historyContent" style="max-height:50vh; overflow-y:auto;"></div>
@@ -236,7 +245,7 @@
 
 <!-- 管理员模态框 -->
 <div class="modal" id="adminModal">
-  <div class="modal-content" style="max-width:700px; text-align:left;">
+  <div class="modal-content" style="max-width:700px;">
     <span class="close-modal" id="closeAdminModal">&times;</span>
     <h3 style="margin-bottom:1rem;"><i class="fas fa-crown"></i> 管理员面板</h3>
     <div id="adminContent" style="max-height:55vh; overflow-y:auto;"></div>
@@ -244,10 +253,8 @@
   </div>
 </div>
 
-<!-- Toast 通知 -->
 <div class="toast-notification" id="toast"></div>
 
-<!-- 依赖库 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -255,27 +262,40 @@
 <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
 
 <script>
-  (function() {
+  (() => {
+    // ==================== 配置 ====================
+    const WORKER_URL = 'https://broken-cake-fcff.326696097.workers.dev'; // 👈 替换这里
+
     // ==================== 全局状态 ====================
     const state = {
-      processingFiles: [],
-      completedFiles: [],
+      translateFiles: [],
+      convertFiles: [],
+      completed: [],
       currentUser: null,
-      records: [],
       nextId: 1,
-      engineOrder: ['google', 'mymemory', 'libre'], // 翻译引擎优先顺序
     };
 
-    // ==================== DOM 元素 ====================
-    const uploadTrigger = document.getElementById('uploadTrigger');
-    const fileInput = document.getElementById('fileInput');
-    const processingList = document.getElementById('processingList');
+    // DOM 元素
+    const translateUpload = document.getElementById('translateUpload');
+    const translateFileInput = document.getElementById('translateFileInput');
+    const translateFileList = document.getElementById('translateFileList');
+    const convertUpload = document.getElementById('convertUpload');
+    const convertFileInput = document.getElementById('convertFileInput');
+    const convertFileList = document.getElementById('convertFileList');
     const completedList = document.getElementById('completedList');
     const loginBtn = document.getElementById('loginBtn');
     const historyBtn = document.getElementById('historyBtn');
     const adminBtn = document.getElementById('adminBtn');
     const logoutBtn = document.getElementById('logoutBtn');
     const loginStatus = document.getElementById('loginStatus');
+    const translateTabBtn = document.getElementById('translateTabBtn');
+    const convertTabBtn = document.getElementById('convertTabBtn');
+    const translateModule = document.getElementById('translateModule');
+    const convertModule = document.getElementById('convertModule');
+    const toast = document.getElementById('toast');
+    const qrSection = document.getElementById('qrSection');
+    const qrZoomModal = document.getElementById('qrZoomModal');
+    const closeQrZoom = document.getElementById('closeQrZoom');
     const loginModal = document.getElementById('loginModal');
     const closeLoginModal = document.getElementById('closeLoginModal');
     const doLoginBtn = document.getElementById('doLoginBtn');
@@ -288,135 +308,98 @@
     const closeAdminModal = document.getElementById('closeAdminModal');
     const adminContent = document.getElementById('adminContent');
     const clearAllRecordsBtn = document.getElementById('clearAllRecordsBtn');
-    const toastEl = document.getElementById('toast');
-    const qrSection = document.getElementById('qrSection');
-    const qrZoomModal = document.getElementById('qrZoomModal');
-    const closeQrZoom = document.getElementById('closeQrZoom');
-    const testApiBtn = document.getElementById('testApiBtn');
 
-    // 配置 PDF.js
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    // ==================== 初始化二维码 ====================
+    // ==================== 初始化 ====================
     new QRCode(document.getElementById('qrContainer'), {
-      text: window.location.href,
-      width: 36, height: 36,
-      colorDark: "#1e293b",
-      colorLight: "#ffffff",
-      correctLevel: QRCode.CorrectLevel.L
+      text: window.location.href, width:36, height:36,
+      colorDark:"#1e293b", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.L
     });
-
     qrSection.addEventListener('click', () => {
       document.getElementById('qrLargeContainer').innerHTML = '';
       new QRCode(document.getElementById('qrLargeContainer'), {
-        text: window.location.href,
-        width: 200, height: 200,
-        colorDark: "#1e293b",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.H
+        text: window.location.href, width:200, height:200,
+        colorDark:"#1e293b", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.H
       });
       qrZoomModal.classList.add('active');
     });
     closeQrZoom.addEventListener('click', () => qrZoomModal.classList.remove('active'));
     qrZoomModal.addEventListener('click', (e) => { if (e.target === qrZoomModal) qrZoomModal.classList.remove('active'); });
 
-    // ==================== 工具函数 ====================
-    function showToast(msg, isError = false) {
-      toastEl.textContent = msg;
-      toastEl.style.background = isError ? '#dc2626' : '#1e293b';
-      toastEl.classList.add('show');
-      setTimeout(() => toastEl.classList.remove('show'), 3000);
-    }
+    // 标签切换
+    translateTabBtn.addEventListener('click', () => {
+      translateTabBtn.classList.add('active'); convertTabBtn.classList.remove('active');
+      translateModule.style.display = 'block'; convertModule.style.display = 'none';
+    });
+    convertTabBtn.addEventListener('click', () => {
+      convertTabBtn.classList.add('active'); translateTabBtn.classList.remove('active');
+      translateModule.style.display = 'none'; convertModule.style.display = 'block';
+    });
 
-    function getFileIcon(name) {
-      const ext = name.split('.').pop().toLowerCase();
-      if (ext === 'pdf') return 'fa-file-pdf';
-      if (ext === 'docx' || ext === 'doc') return 'fa-file-word';
-      if (ext === 'txt') return 'fa-file-alt';
-      if (['png', 'jpg', 'jpeg'].includes(ext)) return 'fa-file-image';
-      return 'fa-file';
-    }
+    // 文件上传监听
+    translateUpload.addEventListener('click', () => translateFileInput.click());
+    translateFileInput.addEventListener('change', e => {
+      if (e.target.files.length) { addFiles(e.target.files, 'translate'); translateFileInput.value = ''; }
+    });
+    convertUpload.addEventListener('click', () => convertFileInput.click());
+    convertFileInput.addEventListener('change', e => {
+      if (e.target.files.length) { addFiles(e.target.files, 'convert'); convertFileInput.value = ''; }
+    });
 
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
+    // 拖拽支持
+    [translateUpload, convertUpload].forEach(area => {
+      area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('drag-over'); });
+      area.addEventListener('dragleave', () => area.classList.remove('drag-over'));
+      area.addEventListener('drop', e => {
+        e.preventDefault(); area.classList.remove('drag-over');
+        const type = area.id === 'translateUpload' ? 'translate' : 'convert';
+        if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files, type);
+      });
+    });
 
-    // ==================== 本地存储管理 ====================
+    // ==================== 用户系统 ====================
     function loadUsers() { return JSON.parse(localStorage.getItem('lingyi_users') || '{}'); }
     function saveUsers(users) { localStorage.setItem('lingyi_users', JSON.stringify(users)); }
     function loadAllRecords() { return JSON.parse(localStorage.getItem('lingyi_records') || '[]'); }
     function saveAllRecords(records) { localStorage.setItem('lingyi_records', JSON.stringify(records)); }
-
     function cleanOldRecords(records) {
       const thirtyDays = 30 * 24 * 60 * 60 * 1000;
       return records.filter(r => (Date.now() - r.timestamp) < thirtyDays);
     }
-
-    function getUserRecords() {
-      const all = loadAllRecords();
-      const cleaned = cleanOldRecords(all);
-      saveAllRecords(cleaned);
-      if (!state.currentUser) return [];
-      if (state.currentUser.isAdmin) return cleaned;
-      return cleaned.filter(r => r.username === state.currentUser.username);
-    }
-
     function addRecord(fileObj) {
       if (!state.currentUser) return;
       const records = loadAllRecords();
       records.push({
-        id: Date.now(),
-        username: state.currentUser.username,
-        filename: fileObj.name,
-        targetLang: fileObj.targetLang,
-        outputFormat: fileObj.outputFormat,
-        translatedText: fileObj.translatedText.substring(0, 200),
+        id: Date.now(), username: state.currentUser.username, filename: fileObj.name,
+        targetLang: fileObj.targetLang || 'N/A', outputFormat: fileObj.fmt,
         timestamp: Date.now(),
       });
       saveAllRecords(cleanOldRecords(records));
     }
 
-    // ==================== 用户认证 ====================
     function login(username, password) {
       if (username === '' && password === 'A123666') {
         state.currentUser = { username: 'admin', isAdmin: true };
-        updateLoginUI();
-        showToast('管理员登录成功');
-        return true;
+        updateLoginUI(); showToast('管理员登录成功'); return true;
       }
-      if (!username.trim()) {
-        showToast('账号不能为空', true);
-        return false;
-      }
+      if (!username.trim()) { showToast('账号不能为空', true); return false; }
       const users = loadUsers();
       if (users[username]) {
         if (users[username].password === password) {
           state.currentUser = { username, isAdmin: false };
-          updateLoginUI();
-          showToast(`欢迎回来，${username}`);
-          return true;
-        } else {
-          showToast('密码错误', true);
-          return false;
-        }
+          updateLoginUI(); showToast(`欢迎回来，${username}`); return true;
+        } else { showToast('密码错误', true); return false; }
       } else {
-        users[username] = { password };
-        saveUsers(users);
+        users[username] = { password }; saveUsers(users);
         state.currentUser = { username, isAdmin: false };
-        updateLoginUI();
-        showToast(`账号已创建并登录，${username}`);
-        return true;
+        updateLoginUI(); showToast(`账号已创建并登录，${username}`); return true;
       }
     }
 
     function logout() {
-      state.currentUser = null;
-      state.completedFiles = [];
-      updateLoginUI();
-      updateUI();
-      showToast('已退出登录');
+      state.currentUser = null; state.completed = [];
+      updateLoginUI(); renderAll(); showToast('已退出登录');
     }
 
     function updateLoginUI() {
@@ -435,480 +418,257 @@
       }
     }
 
-    // ==================== 界面渲染 ====================
-    function renderProcessing() {
-      if (state.processingFiles.length === 0) {
-        processingList.innerHTML = '';
-        return;
-      }
-      processingList.innerHTML = state.processingFiles.map(f => {
-        const p = f.progress || 0;
-        const statusMap = {
-          'extracting': '提取文本中...',
-          'translating': '翻译中...',
-          'generating': '生成文件中...',
-          'error': '处理失败',
-          'pending': '等待翻译'
-        };
-        const icon = f.status === 'error' ? 'fa-exclamation-circle' : (f.status === 'pending' ? 'fa-clock' : 'fa-spinner fa-pulse');
-        return `
-          <div class="file-item">
-            <div class="file-icon"><i class="fas ${getFileIcon(f.name)}"></i></div>
-            <div class="file-info">
-              <div class="file-name">${f.name}</div>
-              <div class="progress-wrap">
-                <div class="progress-bar"><div class="progress-fill" style="width:${p}%"></div></div>
-                <span class="status-text"><i class="fas ${icon}"></i> ${statusMap[f.status]}</span>
-              </div>
-            </div>
-            <div class="file-actions">
-              <select class="lang-select" data-id="${f.id}" ${f.status !== 'pending' && f.status !== 'error' ? 'disabled' : ''}>
-                <option value="zh-CN" ${f.targetLang === 'zh-CN' ? 'selected' : ''}>中文</option>
-                <option value="ja" ${f.targetLang === 'ja' ? 'selected' : ''}>日本語</option>
-                <option value="ko" ${f.targetLang === 'ko' ? 'selected' : ''}>한국어</option>
-                <option value="fr" ${f.targetLang === 'fr' ? 'selected' : ''}>Français</option>
-                <option value="de" ${f.targetLang === 'de' ? 'selected' : ''}>Deutsch</option>
-                <option value="es" ${f.targetLang === 'es' ? 'selected' : ''}>Español</option>
-                <option value="zh-TW" ${f.targetLang === 'zh-TW' ? 'selected' : ''}>繁体中文</option>
-              </select>
-              <select class="format-select" data-id="${f.id}" ${f.status !== 'pending' && f.status !== 'error' ? 'disabled' : ''}>
-                <option value="pdf" ${f.outputFormat === 'pdf' ? 'selected' : ''}>PDF</option>
-                <option value="docx" ${f.outputFormat === 'docx' ? 'selected' : ''}>Word</option>
-                <option value="txt" ${f.outputFormat === 'txt' ? 'selected' : ''}>TXT</option>
-                <option value="html" ${f.outputFormat === 'html' ? 'selected' : ''}>HTML</option>
-                <option value="bilingual" ${f.outputFormat === 'bilingual' ? 'selected' : ''}>双语HTML</option>
-              </select>
-              <button class="btn btn-primary btn-sm translate-btn" data-id="${f.id}" ${f.status === 'extracting' || f.status === 'translating' || f.status === 'generating' ? 'disabled' : ''}>
-                <i class="fas fa-language"></i> 翻译
-              </button>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      document.querySelectorAll('.lang-select').forEach(s => s.addEventListener('change', e => {
-        const f = state.processingFiles.find(f => f.id === parseInt(s.dataset.id));
-        if (f) f.targetLang = s.value;
-      }));
-      document.querySelectorAll('.format-select').forEach(s => s.addEventListener('change', e => {
-        const f = state.processingFiles.find(f => f.id === parseInt(s.dataset.id));
-        if (f) f.outputFormat = s.value;
-      }));
-      document.querySelectorAll('.translate-btn').forEach(b => b.addEventListener('click', () => {
-        const f = state.processingFiles.find(f => f.id === parseInt(b.dataset.id));
-        if (f) translateSingleFile(f);
-      }));
-    }
-
-    function renderCompleted() {
-      if (state.completedFiles.length === 0) {
-        completedList.innerHTML = '<div style="color:#94a3b8; text-align:center; padding:2rem;">暂无完成的翻译文档</div>';
-        return;
-      }
-      completedList.innerHTML = state.completedFiles.map(f => `
-        <div class="file-item">
-          <div class="file-icon"><i class="fas fa-check-circle" style="color:#10b981;"></i></div>
-          <div class="file-info">
-            <div class="file-name">${f.name}</div>
-            <div style="font-size:0.7rem; color:#64748b;">翻译完成 · ${f.outputFilename}</div>
-          </div>
-          <div class="file-actions">
-            <button class="btn btn-outline btn-sm view-btn" data-id="${f.id}"><i class="fas fa-eye"></i> 查看</button>
-            <button class="btn btn-outline btn-sm download-btn" data-id="${f.id}"><i class="fas fa-download"></i> 下载</button>
-          </div>
-        </div>
-      `).join('');
-
-      document.querySelectorAll('.view-btn').forEach(b => b.addEventListener('click', () => {
-        const f = state.completedFiles.find(f => f.id === parseInt(b.dataset.id));
-        if (f) showTextModal(f.name, f.translatedText);
-      }));
-      document.querySelectorAll('.download-btn').forEach(b => b.addEventListener('click', () => {
-        const f = state.completedFiles.find(f => f.id === parseInt(b.dataset.id));
-        if (f && f.outputBlob) {
-          downloadBlob(f.outputBlob, f.outputFilename);
-          showToast(`下载 ${f.outputFilename}`);
-        }
-      }));
-    }
-
-    function showTextModal(title, text) {
-      const modal = document.createElement('div');
-      modal.className = 'modal active';
-      modal.innerHTML = `
-        <div class="modal-content">
-          <span class="close-modal" onclick="this.closest('.modal').remove()">&times;</span>
-          <h3>${title}</h3>
-          <div style="max-height:60vh; overflow-y:auto; white-space:pre-wrap; margin-top:1rem;">${escapeHtml(text)}</div>
-        </div>
-      `;
-      document.body.appendChild(modal);
-      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-    }
-
-    function updateUI() {
-      renderProcessing();
-      renderCompleted();
-    }
-
-    // ==================== 文件管理 ====================
-    function addFiles(fileList) {
-      for (const file of fileList) {
-        const name = file.name.toLowerCase();
-        const validExts = ['pdf', 'docx', 'doc', 'txt', 'png', 'jpg', 'jpeg'];
-        const ext = name.split('.').pop();
-        if (!validExts.includes(ext)) {
-          showToast(`不支持的文件类型: ${file.name}`, true);
-          continue;
-        }
-        state.processingFiles.push({
-          id: state.nextId++,
-          file,
-          name: file.name,
-          type: ext,
-          extractedText: '',
-          translatedText: '',
-          progress: 0,
-          status: 'pending',
-          targetLang: 'zh-CN',
-          outputFormat: 'pdf'
-        });
-      }
-      updateUI();
-    }
-
-    // ==================== 单文件翻译流程 ====================
-    async function translateSingleFile(fileObj) {
-      fileObj.status = 'extracting';
-      fileObj.progress = 0;
-      updateUI();
-      try {
-        await extractText(fileObj);
-        if (!fileObj.extractedText) throw new Error('未提取到文本');
-        fileObj.status = 'translating';
-        fileObj.progress = 0;
-        updateUI();
-        fileObj.translatedText = await translateWithFallback(fileObj.extractedText, fileObj.targetLang, fileObj);
-        fileObj.status = 'generating';
-        fileObj.progress = 0;
-        updateUI();
-        const { blob, filename } = await generateOutput(fileObj, fileObj.outputFormat);
-        state.processingFiles = state.processingFiles.filter(f => f.id !== fileObj.id);
-        state.completedFiles.push({
-          id: fileObj.id,
-          name: fileObj.name,
-          outputBlob: blob,
-          outputFilename: filename,
-          translatedText: fileObj.translatedText
-        });
-        addRecord(fileObj);
-        showToast(`${fileObj.name} 翻译完成`);
-      } catch (err) {
-        fileObj.status = 'error';
-        showToast(`${fileObj.name} 处理失败: ${err.message}`, true);
-      }
-      updateUI();
-    }
-
-    // ==================== 多引擎自动切换翻译 ====================
-    async function translateWithFallback(text, targetLang, fileObj) {
-      for (const engine of state.engineOrder) {
-        try {
-          fileObj.currentEngine = engine;
-          updateUI();
-          const result = await translateByEngine(engine, text, targetLang, fileObj);
-          return result;
-        } catch (e) {
-          console.warn(`${engine} 引擎失败:`, e.message);
-          continue;
-        }
-      }
-      throw new Error('所有翻译引擎均不可用，请检查网络后重试');
-    }
-
-    async function translateByEngine(engine, text, targetLang, fileObj) {
-      const maxChunk = engine === 'google' ? 800 : 400;
-      const chunks = splitText(text, maxChunk);
-      let result = [];
-      for (let i = 0; i < chunks.length; i++) {
-        let translated;
-        switch (engine) {
-          case 'google': translated = await googleTranslate(chunks[i], targetLang); break;
-          case 'mymemory': translated = await mymemoryTranslate(chunks[i], targetLang); break;
-          case 'libre': translated = await libreTranslate(chunks[i], targetLang); break;
-          default: throw new Error('未知引擎');
-        }
-        result.push(translated);
-        fileObj.progress = Math.round(((i + 1) / chunks.length) * 100);
-        updateUI();
-        if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 100));
-      }
-      return result.join('\n\n');
-    }
-
-    async function googleTranslate(text, lang) {
-      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${lang}&dt=t&q=${encodeURIComponent(text)}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('Google 翻译响应异常');
-      const data = await res.json();
-      if (data && data[0]) return data[0].map(item => item[0]).join('');
-      throw new Error('Google 翻译返回空数据');
-    }
-
-    async function mymemoryTranslate(text, lang) {
-      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${lang}&de=user@translator.app`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('MyMemory 响应异常');
-      const data = await res.json();
-      if (data.responseStatus === 200) return data.responseData.translatedText;
-      if (data.responseDetails && data.responseDetails.includes('QUOTA')) throw new Error('MyMemory 配额已用尽');
-      throw new Error(data.responseDetails || 'MyMemory 翻译失败');
-    }
-
-    async function libreTranslate(text, lang) {
-      const res = await fetch('https://translate.argosopentech.com/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q: text, source: 'en', target: lang, format: 'text' })
-      });
-      if (!res.ok) throw new Error('LibreTranslate 响应异常');
-      const data = await res.json();
-      if (data.translatedText) return data.translatedText;
-      throw new Error('LibreTranslate 翻译失败');
-    }
-
-    function splitText(text, max) {
-      const sentences = text.match(/[^.!?\n]+[.!?]*\s*/g) || [text];
-      const chunks = [];
-      let cur = '';
-      for (const s of sentences) {
-        if ((cur + s).length <= max) cur += s;
-        else {
-          if (cur) chunks.push(cur.trim());
-          cur = s;
-        }
-      }
-      if (cur) chunks.push(cur.trim());
-      return chunks.length ? chunks : [text];
-    }
-
-    // ==================== 文本提取 ====================
-    async function extractText(fileObj) {
-      switch (fileObj.type) {
-        case 'pdf': return await extractPDF(fileObj);
-        case 'docx': case 'doc': return await extractDocx(fileObj);
-        case 'txt':
-          fileObj.extractedText = await fileObj.file.text();
-          fileObj.progress = 100;
-          return;
-        case 'png': case 'jpg': case 'jpeg': return await extractImage(fileObj);
-        default: throw new Error('不支持的类型');
-      }
-    }
-
-    async function extractPDF(fileObj) {
-      const buf = await fileObj.file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-      let text = '';
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        text += content.items.map(item => item.str).join(' ') + '\n';
-        fileObj.progress = Math.round((i / pdf.numPages) * 90) + 5;
-        updateUI();
-      }
-      fileObj.extractedText = text.replace(/\s{2,}/g, ' ').trim();
-      fileObj.progress = 100;
-    }
-
-    async function extractDocx(fileObj) {
-      const buf = await fileObj.file.arrayBuffer();
-      const result = await mammoth.extractRawText({ arrayBuffer: buf });
-      fileObj.extractedText = result.value.trim();
-      fileObj.progress = 100;
-    }
-
-    async function extractImage(fileObj) {
-      const worker = await Tesseract.createWorker('eng', 1, {
-        logger: m => {
-          if (m.status === 'recognizing text') {
-            fileObj.progress = Math.round(m.progress * 100);
-            updateUI();
-          }
-        }
-      });
-      const { data: { text } } = await worker.recognize(fileObj.file);
-      await worker.terminate();
-      fileObj.extractedText = text.trim();
-      fileObj.progress = 100;
-    }
-
-    // ==================== 输出文件生成 ====================
-    async function generateOutput(fileObj, format) {
-      const name = fileObj.name.replace(/\.[^.]+$/, '');
-      switch (format) {
-        case 'pdf': return await genPDF(fileObj.translatedText, name);
-        case 'docx': return await genDOCX(fileObj.translatedText, name);
-        case 'txt': return genTXT(fileObj.translatedText, name);
-        case 'html': return genHTML(fileObj.translatedText, name);
-        case 'bilingual': return genBilingual(fileObj.extractedText, fileObj.translatedText, name);
-        default: return genTXT(fileObj.translatedText, name);
-      }
-    }
-
-    async function genPDF(text, name) {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      const maxWidth = doc.internal.pageSize.getWidth() - 40;
-      doc.setFontSize(12);
-      const lines = doc.splitTextToSize(text, maxWidth);
-      doc.text(lines, 20, 20);
-      return { blob: doc.output('blob'), filename: `${name}_翻译.pdf` };
-    }
-
-    async function genDOCX(text, name) {
-      const { Document, Packer, Paragraph, TextRun } = docx;
-      const paragraphs = text.split('\n\n').filter(p => p.trim()).map(p =>
-        new Paragraph({
-          children: [new TextRun({ text: p.trim(), size: 24 })],
-          spacing: { after: 200 },
-          indent: { firstLine: 480 }
-        })
-      );
-      const doc = new Document({ sections: [{ children: paragraphs }] });
-      const blob = await Packer.toBlob(doc);
-      return { blob, filename: `${name}_翻译.docx` };
-    }
-
-    function genTXT(text, name) {
-      return { blob: new Blob(['\uFEFF' + text], { type: 'text/plain;charset=utf-8' }), filename: `${name}_翻译.txt` };
-    }
-
-    function genHTML(text, name) {
-      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>翻译-${name}</title><style>body{font-family:sans-serif;max-width:800px;margin:2em auto;line-height:1.8;}p{text-indent:2em;}</style></head><body><h1>翻译结果</h1>${text.split('\n\n').map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')}</body></html>`;
-      return { blob: new Blob(['\uFEFF' + html], { type: 'text/html;charset=utf-8' }), filename: `${name}_翻译.html` };
-    }
-
-    function genBilingual(orig, trans, name) {
-      const op = orig.split('\n\n').filter(p => p.trim());
-      const tp = trans.split('\n\n').filter(p => p.trim());
-      let rows = '';
-      for (let i = 0; i < Math.max(op.length, tp.length); i++) {
-        rows += `<tr><td style="width:50%;">${(op[i] || '').replace(/\n/g, '<br>')}</td><td style="width:50%;">${(tp[i] || '').replace(/\n/g, '<br>')}</td></tr>`;
-      }
-      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>双语-${name}</title><style>body{font-family:sans-serif;max-width:1000px;margin:2em auto;}table{width:100%;border-collapse:collapse;}td{padding:8px;border:1px solid #ddd;vertical-align:top;}</style></head><body><h1>双语对照</h1><table>${rows}</table></body></html>`;
-      return { blob: new Blob(['\uFEFF' + html], { type: 'text/html;charset=utf-8' }), filename: `${name}_双语.html` };
-    }
-
-    function downloadBlob(blob, filename) {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-    }
-
-    // ==================== 事件绑定 ====================
-    uploadTrigger.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', e => {
-      if (e.target.files.length) {
-        addFiles(e.target.files);
-        fileInput.value = '';
-      }
-    });
-    uploadTrigger.addEventListener('dragover', e => {
-      e.preventDefault();
-      uploadTrigger.classList.add('drag-over');
-    });
-    uploadTrigger.addEventListener('dragleave', () => uploadTrigger.classList.remove('drag-over'));
-    uploadTrigger.addEventListener('drop', e => {
-      e.preventDefault();
-      uploadTrigger.classList.remove('drag-over');
-      if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
-    });
-
-    // 登录相关
     loginBtn.addEventListener('click', () => loginModal.classList.add('active'));
     closeLoginModal.addEventListener('click', () => loginModal.classList.remove('active'));
     doLoginBtn.addEventListener('click', () => {
-      const u = loginUsername.value.trim();
-      const p = loginPassword.value.trim();
-      if (login(u, p)) {
-        loginModal.classList.remove('active');
-        loginUsername.value = '';
-        loginPassword.value = '';
-      }
+      const u = loginUsername.value.trim(), p = loginPassword.value.trim();
+      if (login(u, p)) { loginModal.classList.remove('active'); loginUsername.value = ''; loginPassword.value = ''; }
     });
-
     historyBtn.addEventListener('click', () => {
-      state.records = getUserRecords();
-      historyContent.innerHTML = state.records.length === 0
-        ? '<div style="color:#94a3b8;padding:1rem;">暂无使用记录</div>'
-        : state.records.map(r => `
-          <div class="record-item">
-            <strong>${r.filename}</strong> → ${r.targetLang} (${r.outputFormat})<br>
-            <small>${new Date(r.timestamp).toLocaleString()} | ${r.translatedText.substring(0, 60)}...</small>
-          </div>
-        `).join('') + '<p style="font-size:0.7rem;color:#ef4444;margin-top:0.5rem;">⚠️ 记录仅保存30天，请及时下载文件。</p>';
+      const records = cleanOldRecords(loadAllRecords().filter(r => state.currentUser.isAdmin || r.username === state.currentUser.username));
+      historyContent.innerHTML = records.length === 0 ? '<div style="color:#94a3b8;padding:1rem;">暂无使用记录</div>' :
+        records.map(r => `<div class="record-item"><strong>${r.filename}</strong><br><small>${new Date(r.timestamp).toLocaleString()} | 格式: ${r.outputFormat}</small></div>`).join('') +
+        '<p style="font-size:0.7rem;color:#ef4444;margin-top:0.5rem;">⚠️ 记录仅保存30天，请及时下载文件。</p>';
       historyModal.classList.add('active');
     });
     closeHistoryModal.addEventListener('click', () => historyModal.classList.remove('active'));
-
     adminBtn.addEventListener('click', () => {
-      if (!state.currentUser?.isAdmin) return;
-      const all = loadAllRecords();
-      const cleaned = cleanOldRecords(all);
-      saveAllRecords(cleaned);
-      adminContent.innerHTML = cleaned.length === 0
-        ? '<div>暂无任何用户记录</div>'
-        : cleaned.map(r => `
-          <div class="record-item">
-            <strong>${r.username}</strong> | ${r.filename} → ${r.targetLang} (${r.outputFormat})<br>
-            <small>${new Date(r.timestamp).toLocaleString()}</small>
-          </div>
-        `).join('');
+      const records = cleanOldRecords(loadAllRecords());
+      adminContent.innerHTML = records.length === 0 ? '<div>暂无任何用户记录</div>' :
+        records.map(r => `<div class="record-item"><strong>${r.username}</strong> | ${r.filename}<br><small>${new Date(r.timestamp).toLocaleString()}</small></div>`).join('');
       adminModal.classList.add('active');
     });
     closeAdminModal.addEventListener('click', () => adminModal.classList.remove('active'));
     clearAllRecordsBtn.addEventListener('click', () => {
-      if (confirm('确定删除所有用户的使用记录吗？')) {
-        localStorage.removeItem('lingyi_records');
-        showToast('已清除所有记录');
-        adminModal.classList.remove('active');
-      }
+      if (confirm('确定删除所有用户的使用记录吗？')) { localStorage.removeItem('lingyi_records'); showToast('已清除所有记录'); adminModal.classList.remove('active'); }
     });
-
     logoutBtn.addEventListener('click', logout);
 
-    // 网络测试（优先检测 Google）
-    testApiBtn.addEventListener('click', async () => {
-      testApiBtn.textContent = '⏳ 测试中...';
-      try {
-        const testUrl = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-CN&dt=t&q=test';
-        const res = await fetch(testUrl);
-        if (res.ok) {
-          showToast('✅ Google 翻译网络正常');
-        } else {
-          showToast('⚠️ Google 翻译不可用，将自动切换备用引擎', true);
-        }
-      } catch (e) {
-        showToast('❌ 网络不通，无法访问翻译服务器', true);
-      } finally {
-        testApiBtn.innerHTML = '<i class="fas fa-plug"></i> 测试翻译网络';
-      }
-    });
-
-    // 点击模态框外部关闭
     window.addEventListener('click', e => {
       if (e.target === loginModal) loginModal.classList.remove('active');
       if (e.target === historyModal) historyModal.classList.remove('active');
       if (e.target === adminModal) adminModal.classList.remove('active');
     });
 
+    // ==================== 文件处理 ====================
+    function addFiles(files, type) {
+      for (const file of files) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (type === 'translate' && !['pdf','docx','doc','txt','png','jpg','jpeg'].includes(ext)) {
+          showToast(`翻译不支持: ${file.name}`, true); continue;
+        }
+        if (type === 'convert' && !['pdf','docx','doc','txt','png','jpg','jpeg'].includes(ext)) {
+          showToast(`转换不支持: ${file.name}`, true); continue;
+        }
+        const fileObj = {
+          id: state.nextId++, file, name: file.name, ext,
+          type, status: 'pending', progress: 0,
+          targetLang: 'zh-CN',
+          fmt: type === 'translate' ? 'pdf' : (ext === 'pdf' ? 'docx' : ext === 'docx' ? 'pdf' : 'txt'),
+          extractedText: '', translatedText: ''
+        };
+        if (type === 'translate') state.translateFiles.push(fileObj);
+        else state.convertFiles.push(fileObj);
+      }
+      renderAll();
+    }
+
+    function renderAll() {
+      translateFileList.innerHTML = state.translateFiles.map(f => renderFileItem(f, 'translate')).join('');
+      convertFileList.innerHTML = state.convertFiles.map(f => renderFileItem(f, 'convert')).join('');
+      completedList.innerHTML = state.completed.map(f => `
+        <div class="file-item">
+          <i class="fas fa-check-circle" style="color:#10b981;"></i>
+          <div class="file-info"><div class="file-name">${f.name}</div><small>${f.filename}</small></div>
+          <div class="file-actions">
+            <button class="btn btn-outline btn-sm view-btn" data-text="${escapeHtml(f.translatedText || f.extractedText)}">查看</button>
+            <button class="btn btn-outline btn-sm download-btn" data-url="${f.blobUrl}" data-filename="${f.filename}">下载</button>
+          </div>
+        </div>
+      `).join('') || '<div style="color:#94a3b8; text-align:center; padding:2rem;">暂无完成的文档</div>';
+      bindEvents();
+    }
+
+    function renderFileItem(f, type) {
+      const langSelect = type === 'translate' ? `<select class="lang-select" data-id="${f.id}"><option value="zh-CN" ${f.targetLang==='zh-CN'?'selected':''}>中文</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="fr">Français</option><option value="de">Deutsch</option></select>` : '';
+      const targetFormats = type === 'translate' ? ['pdf','docx','txt','html','bilingual'] : ['pdf','docx','txt'];
+      const formatSelect = `<select class="fmt-select" data-id="${f.id}">${targetFormats.map(fmt => `<option value="${fmt}" ${f.fmt===fmt?'selected':''}>${fmt.toUpperCase()}</option>`).join('')}</select>`;
+      const actionBtn = `<button class="btn btn-primary btn-sm process-btn" data-id="${f.id}">${type === 'translate' ? '翻译' : '转换'}</button>`;
+      return `
+        <div class="file-item">
+          <i class="fas fa-file"></i>
+          <div class="file-info">
+            <div class="file-name">${f.name}</div>
+            <div class="progress-bar"><div class="progress-fill" style="width:${f.progress}%"></div></div>
+            <small>${f.status === 'error' ? '失败' : f.status === 'done' ? '完成' : '等待'}</small>
+          </div>
+          <div class="file-actions">${langSelect}${formatSelect}${actionBtn}</div>
+        </div>`;
+    }
+
+    function bindEvents() {
+      document.querySelectorAll('.lang-select').forEach(s => s.addEventListener('change', e => {
+        const f = findFile(parseInt(s.dataset.id)); if(f) f.targetLang = s.value;
+      }));
+      document.querySelectorAll('.fmt-select').forEach(s => s.addEventListener('change', e => {
+        const f = findFile(parseInt(s.dataset.id)); if(f) f.fmt = s.value;
+      }));
+      document.querySelectorAll('.process-btn').forEach(b => b.addEventListener('click', () => {
+        const f = findFile(parseInt(b.dataset.id)); if(f) processFile(f);
+      }));
+      document.querySelectorAll('.download-btn').forEach(b => b.addEventListener('click', () => {
+        const a = document.createElement('a'); a.href = b.dataset.url; a.download = b.dataset.filename; a.click();
+      }));
+      document.querySelectorAll('.view-btn').forEach(b => b.addEventListener('click', () => {
+        const w = window.open('', '_blank'); w.document.write(`<pre style="white-space:pre-wrap;padding:1rem;">${b.dataset.text}</pre>`);
+      }));
+    }
+
+    function findFile(id) {
+      return state.translateFiles.find(f => f.id === id) || state.convertFiles.find(f => f.id === id);
+    }
+
+    async function processFile(f) {
+      if (f.type === 'translate') await translateFile(f);
+      else await convertFile(f);
+    }
+
+    async function translateFile(f) {
+      f.status='extracting'; f.progress=0; renderAll();
+      try {
+        const text = await extractText(f.file, f.ext);
+        if (!text.trim()) throw new Error('没有文字');
+        f.extractedText = text; f.status='translating'; f.progress=0; renderAll();
+        const translated = await callWorker(text, f.targetLang);
+        f.translatedText = translated;
+        const { blob, filename } = await generateOutput(translated, f.extractedText, f.fmt, f.name);
+        f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done';
+        state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
+        state.completed.push(f); addRecord(f);
+        showToast('翻译完成');
+      } catch(e) { f.status='error'; showToast(`翻译失败: ${e.message}`, true); }
+      renderAll();
+    }
+
+    async function convertFile(f) {
+      f.status='extracting'; f.progress=0; renderAll();
+      try {
+        const text = await extractText(f.file, f.ext);
+        if (!text.trim()) throw new Error('没有文字');
+        f.extractedText = text;
+        const { blob, filename } = await generateOutput(text, text, f.fmt, f.name, true);
+        f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done';
+        state.convertFiles = state.convertFiles.filter(x => x.id !== f.id);
+        state.completed.push(f); addRecord(f);
+        showToast('转换完成');
+      } catch(e) { f.status='error'; showToast(`转换失败: ${e.message}`, true); }
+      renderAll();
+    }
+
+    async function callWorker(text, target) {
+      const res = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, target })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      return data.translated;
+    }
+
+    async function extractText(file, ext) {
+      switch(ext) {
+        case 'pdf': return await extractPDF(file);
+        case 'docx': case 'doc': return await extractDocx(file);
+        case 'txt': return await file.text();
+        case 'png': case 'jpg': case 'jpeg': return await extractImage(file);
+        default: throw new Error('不支持');
+      }
+    }
+
+    async function extractPDF(file) {
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+      let text = '';
+      for (let i=1; i<=pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map(item => item.str).join(' ') + '\n';
+      }
+      return text.replace(/\s{2,}/g, ' ').trim();
+    }
+
+    async function extractDocx(file) {
+      const buf = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({arrayBuffer: buf});
+      return result.value.trim();
+    }
+
+    async function extractImage(file) {
+      const worker = await Tesseract.createWorker('eng', 1);
+      const { data: { text } } = await worker.recognize(file);
+      await worker.terminate();
+      return text.trim();
+    }
+
+    async function generateOutput(translated, original, fmt, originalName, isConvert = false) {
+      const base = originalName.replace(/\.[^.]+$/, '');
+      const prefix = isConvert ? '_转换' : '_翻译';
+      switch(fmt) {
+        case 'pdf': return await genPDF(translated, base + prefix);
+        case 'docx': return await genDOCX(translated, base + prefix);
+        case 'txt': return genTXT(translated, base + prefix);
+        case 'html': return genHTML(translated, base + prefix);
+        case 'bilingual': return genBilingual(original, translated, base + prefix);
+        default: return genTXT(translated, base + prefix);
+      }
+    }
+
+    async function genPDF(text, name) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const maxW = doc.internal.pageSize.getWidth() - 40;
+      doc.setFontSize(12);
+      doc.text(doc.splitTextToSize(text, maxW), 20, 20);
+      return { blob: doc.output('blob'), filename: `${name}.pdf` };
+    }
+
+    async function genDOCX(text, name) {
+      const { Document, Packer, Paragraph, TextRun } = docx;
+      const paras = text.split('\n\n').filter(p => p.trim()).map(p =>
+        new Paragraph({ children: [new TextRun({text: p.trim(), size:24})], spacing:{after:200}, indent:{firstLine:480} })
+      );
+      const blob = await Packer.toBlob(new Document({ sections: [{children: paras}] }));
+      return { blob, filename: `${name}.docx` };
+    }
+
+    function genTXT(text, name) {
+      return { blob: new Blob(['\uFEFF'+text], {type:'text/plain'}), filename: `${name}.txt` };
+    }
+
+    function genHTML(text, name) {
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${name}</title></head><body>${text.split('\n\n').map(p=>`<p>${p}</p>`).join('')}</body></html>`;
+      return { blob: new Blob(['\uFEFF'+html], {type:'text/html'}), filename: `${name}.html` };
+    }
+
+    function genBilingual(orig, trans, name) {
+      const op = orig.split('\n\n'), tp = trans.split('\n\n');
+      let rows = '';
+      for (let i=0; i<Math.max(op.length, tp.length); i++) rows += `<tr><td>${op[i]||''}</td><td>${tp[i]||''}</td></tr>`;
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>双语-${name}</title><style>table{width:100%;border-collapse:collapse}td{width:50%;padding:8px;border:1px solid #ddd}</style></head><body><table>${rows}</table></body></html>`;
+      return { blob: new Blob(['\uFEFF'+html], {type:'text/html'}), filename: `${name}.html` };
+    }
+
+    function showToast(msg, err=false) {
+      toast.textContent = msg; toast.style.background = err ? '#dc2626' : '#1e293b';
+      toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    function escapeHtml(text) { const d = document.createElement('div'); d.textContent = text; return d.innerHTML; }
+
     // 初始化
-    updateUI();
     updateLoginUI();
+    renderAll();
   })();
 </script>
 </body>
