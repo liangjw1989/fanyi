@@ -128,19 +128,17 @@
     .qr-large-inner { background:white; border-radius:16px; padding:12px; }
 
     .footer-hint {
-      text-align: center; font-size: 0.75rem; color: #64748b;
-      background: rgba(255,255,255,0.6); padding: 0.6rem;
-      border-radius: 1.5rem; backdrop-filter: blur(10px); margin-top: 0.5rem;
+      text-align: center; font-size:0.75rem; color:#64748b;
+      background: rgba(255,255,255,0.6); padding:0.6rem; border-radius:1.5rem;
+      backdrop-filter: blur(10px); margin-top:0.5rem;
     }
-    .test-network {
-      text-align: right; margin-bottom: 0.5rem; font-size: 0.75rem;
-    }
+    .test-network { text-align:right; margin-bottom:0.5rem; font-size:0.75rem; }
     .test-network a { color:#4f6ef7; cursor:pointer; text-decoration:underline; font-weight:500; }
   </style>
 </head>
 <body>
 <div class="app-wrapper">
-  <!-- 头部区域 -->
+  <!-- 顶部 -->
   <div class="card top-bar">
     <div class="brand">
       <div class="brand-icon"><i class="fas fa-language"></i></div>
@@ -166,7 +164,7 @@
     </div>
   </div>
 
-  <!-- 上传及处理区域 -->
+  <!-- 上传及处理 -->
   <div class="card">
     <div class="test-network">
       <a id="testApiBtn"><i class="fas fa-plug"></i> 测试翻译网络</a>
@@ -180,7 +178,7 @@
     <div id="processingList" style="margin-top:1rem;"></div>
   </div>
 
-  <!-- 已完成列表 -->
+  <!-- 已完成 -->
   <div class="card">
     <div style="font-weight:600; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem;">
       <i class="fas fa-check-circle" style="color:#10b981;"></i> 已完成的文档
@@ -190,7 +188,6 @@
     </div>
   </div>
 
-  <!-- 底部常驻提示 -->
   <div class="footer-hint">🔐 登录查看翻译记录</div>
 </div>
 
@@ -266,6 +263,7 @@
       currentUser: null,
       records: [],
       nextId: 1,
+      engineOrder: ['google', 'mymemory', 'libre'], // 翻译引擎优先顺序
     };
 
     // ==================== DOM 元素 ====================
@@ -308,7 +306,6 @@
       correctLevel: QRCode.CorrectLevel.L
     });
 
-    // 二维码放大
     qrSection.addEventListener('click', () => {
       document.getElementById('qrLargeContainer').innerHTML = '';
       new QRCode(document.getElementById('qrLargeContainer'), {
@@ -505,7 +502,7 @@
 
     function renderCompleted() {
       if (state.completedFiles.length === 0) {
-        completedList.innerHTML = '<div style="color:#94a3b8;text-align:center;padding:2rem;">暂无完成的翻译文档</div>';
+        completedList.innerHTML = '<div style="color:#94a3b8; text-align:center; padding:2rem;">暂无完成的翻译文档</div>';
         return;
       }
       completedList.innerHTML = state.completedFiles.map(f => `
@@ -513,7 +510,7 @@
           <div class="file-icon"><i class="fas fa-check-circle" style="color:#10b981;"></i></div>
           <div class="file-info">
             <div class="file-name">${f.name}</div>
-            <div style="font-size:0.7rem;color:#64748b;">翻译完成 · ${f.outputFilename}</div>
+            <div style="font-size:0.7rem; color:#64748b;">翻译完成 · ${f.outputFilename}</div>
           </div>
           <div class="file-actions">
             <button class="btn btn-outline btn-sm view-btn" data-id="${f.id}"><i class="fas fa-eye"></i> 查看</button>
@@ -542,7 +539,7 @@
         <div class="modal-content">
           <span class="close-modal" onclick="this.closest('.modal').remove()">&times;</span>
           <h3>${title}</h3>
-          <div style="max-height:60vh;overflow-y:auto;white-space:pre-wrap;margin-top:1rem;">${escapeHtml(text)}</div>
+          <div style="max-height:60vh; overflow-y:auto; white-space:pre-wrap; margin-top:1rem;">${escapeHtml(text)}</div>
         </div>
       `;
       document.body.appendChild(modal);
@@ -591,7 +588,7 @@
         fileObj.status = 'translating';
         fileObj.progress = 0;
         updateUI();
-        fileObj.translatedText = await translateWithMyMemory(fileObj.extractedText, fileObj.targetLang, fileObj);
+        fileObj.translatedText = await translateWithFallback(fileObj.extractedText, fileObj.targetLang, fileObj);
         fileObj.status = 'generating';
         fileObj.progress = 0;
         updateUI();
@@ -613,29 +610,71 @@
       updateUI();
     }
 
-    // ==================== 翻译引擎 (仅 MyMemory) ====================
-    async function translateWithMyMemory(text, targetLang, fileObj) {
-      const chunks = splitText(text, 400);
+    // ==================== 多引擎自动切换翻译 ====================
+    async function translateWithFallback(text, targetLang, fileObj) {
+      for (const engine of state.engineOrder) {
+        try {
+          fileObj.currentEngine = engine;
+          updateUI();
+          const result = await translateByEngine(engine, text, targetLang, fileObj);
+          return result;
+        } catch (e) {
+          console.warn(`${engine} 引擎失败:`, e.message);
+          continue;
+        }
+      }
+      throw new Error('所有翻译引擎均不可用，请检查网络后重试');
+    }
+
+    async function translateByEngine(engine, text, targetLang, fileObj) {
+      const maxChunk = engine === 'google' ? 800 : 400;
+      const chunks = splitText(text, maxChunk);
       let result = [];
       for (let i = 0; i < chunks.length; i++) {
-        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunks[i])}&langpair=en|${targetLang}`;
-        try {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error('MyMemory 响应异常');
-          const data = await res.json();
-          if (data.responseStatus === 200) {
-            result.push(data.responseData.translatedText);
-          } else {
-            throw new Error(data.responseDetails || 'MyMemory 翻译失败');
-          }
-        } catch (err) {
-          throw new Error('无法连接到翻译服务器，请检查网络。' + err.message);
+        let translated;
+        switch (engine) {
+          case 'google': translated = await googleTranslate(chunks[i], targetLang); break;
+          case 'mymemory': translated = await mymemoryTranslate(chunks[i], targetLang); break;
+          case 'libre': translated = await libreTranslate(chunks[i], targetLang); break;
+          default: throw new Error('未知引擎');
         }
+        result.push(translated);
         fileObj.progress = Math.round(((i + 1) / chunks.length) * 100);
         updateUI();
-        if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 150));
+        if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 100));
       }
       return result.join('\n\n');
+    }
+
+    async function googleTranslate(text, lang) {
+      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${lang}&dt=t&q=${encodeURIComponent(text)}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Google 翻译响应异常');
+      const data = await res.json();
+      if (data && data[0]) return data[0].map(item => item[0]).join('');
+      throw new Error('Google 翻译返回空数据');
+    }
+
+    async function mymemoryTranslate(text, lang) {
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${lang}&de=user@translator.app`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('MyMemory 响应异常');
+      const data = await res.json();
+      if (data.responseStatus === 200) return data.responseData.translatedText;
+      if (data.responseDetails && data.responseDetails.includes('QUOTA')) throw new Error('MyMemory 配额已用尽');
+      throw new Error(data.responseDetails || 'MyMemory 翻译失败');
+    }
+
+    async function libreTranslate(text, lang) {
+      const res = await fetch('https://translate.argosopentech.com/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: text, source: 'en', target: lang, format: 'text' })
+      });
+      if (!res.ok) throw new Error('LibreTranslate 响应异常');
+      const data = await res.json();
+      if (data.translatedText) return data.translatedText;
+      throw new Error('LibreTranslate 翻译失败');
     }
 
     function splitText(text, max) {
@@ -842,17 +881,16 @@
 
     logoutBtn.addEventListener('click', logout);
 
-    // 网络测试按钮
+    // 网络测试（优先检测 Google）
     testApiBtn.addEventListener('click', async () => {
-      testApiBtn.textContent = '⏳ 正在测试...';
+      testApiBtn.textContent = '⏳ 测试中...';
       try {
-        const testUrl = 'https://api.mymemory.translated.net/get?q=test&langpair=en|zh-CN';
+        const testUrl = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-CN&dt=t&q=test';
         const res = await fetch(testUrl);
-        const data = await res.json();
-        if (data.responseStatus === 200) {
-          showToast('✅ 网络正常，翻译API可用');
+        if (res.ok) {
+          showToast('✅ Google 翻译网络正常');
         } else {
-          showToast('⚠️ API返回异常，请稍后再试', true);
+          showToast('⚠️ Google 翻译不可用，将自动切换备用引擎', true);
         }
       } catch (e) {
         showToast('❌ 网络不通，无法访问翻译服务器', true);
@@ -868,7 +906,7 @@
       if (e.target === adminModal) adminModal.classList.remove('active');
     });
 
-    // 初始化界面
+    // 初始化
     updateUI();
     updateLoginUI();
   })();
