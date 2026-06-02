@@ -256,6 +256,7 @@
 <script>
   (() => {
     // ==================== 配置 ====================
+    // ⚠️ 请将此处替换为你腾讯云函数实际生成的 URL 地址
     const API_PROXY_URL = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
 
     // ==================== 全局状态 ====================
@@ -556,6 +557,7 @@
       renderAll();
     }
 
+    // ==================== 核心修复 1：callProxy 正确读取 result ====================
     async function callProxy(text, target) {
       const res = await fetch(API_PROXY_URL, {
         method: 'POST',
@@ -563,8 +565,9 @@
         body: JSON.stringify({ text, target })
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      return data.translated;
+      // 后端返回的是 {code:0, result:"翻译内容"}，不是 translated
+      if (data.code !== 0) throw new Error(data.error || '翻译接口错误');
+      return data.result;
     }
 
     async function extractText(file, ext) {
@@ -602,16 +605,17 @@
       return text.trim();
     }
 
+    // ==================== 核心修复 2：输出函数加上默认值防止 undefined 崩溃 ====================
     async function generateOutput(translated, original, fmt, originalName, isConvert = false) {
       const base = originalName.replace(/\.[^.]+$/, '');
       const prefix = isConvert ? '_转换' : '_翻译';
       switch(fmt) {
-        case 'pdf': return await genPDF(translated, base + prefix);
-        case 'docx': return await genDOCX(translated, base + prefix);
-        case 'txt': return genTXT(translated, base + prefix);
-        case 'html': return genHTML(translated, base + prefix);
-        case 'bilingual': return genBilingual(original, translated, base + prefix);
-        default: return genTXT(translated, base + prefix);
+        case 'pdf': return await genPDF(translated || '', base + prefix);
+        case 'docx': return await genDOCX(translated || '', base + prefix);
+        case 'txt': return genTXT(translated || '', base + prefix);
+        case 'html': return genHTML(translated || '', base + prefix);
+        case 'bilingual': return genBilingual(original || '', translated || '', base + prefix);
+        default: return genTXT(translated || '', base + prefix);
       }
     }
 
@@ -620,30 +624,33 @@
       const doc = new jsPDF();
       const maxW = doc.internal.pageSize.getWidth() - 40;
       doc.setFontSize(12);
-      doc.text(doc.splitTextToSize(text, maxW), 20, 20);
+      // 加上 text || '' 防止崩溃
+      doc.text(doc.splitTextToSize(text || '', maxW), 20, 20);
       return { blob: doc.output('blob'), filename: `${name}.pdf` };
     }
 
     async function genDOCX(text, name) {
       const { Document, Packer, Paragraph, TextRun } = docx;
-      const paras = text.split('\n\n').filter(p => p.trim()).map(p =>
-        new Paragraph({ children: [new TextRun({text: p.trim(), size:24})], spacing:{after:200}, indent:{firstLine:480} })
+      // 加上 text || '' 防止崩溃
+      const paras = (text || '').split('\n\n').filter(p => p.trim()).map(p =>
+        new Paragraph({ children: [new TextRun({text: (p || '').trim(), size:24})], spacing:{after:200}, indent:{firstLine:480} })
       );
       const blob = await Packer.toBlob(new Document({ sections: [{children: paras}] }));
       return { blob, filename: `${name}.docx` };
     }
 
     function genTXT(text, name) {
-      return { blob: new Blob(['\uFEFF'+text], {type:'text/plain'}), filename: `${name}.txt` };
+      return { blob: new Blob(['\uFEFF' + (text || '')], {type:'text/plain'}), filename: `${name}.txt` };
     }
 
     function genHTML(text, name) {
-      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${name}</title></head><body>${text.split('\n\n').map(p=>`<p>${p}</p>`).join('')}</body></html>`;
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${name}</title></head><body>${(text || '').split('\n\n').map(p=>`<p>${p}</p>`).join('')}</body></html>`;
       return { blob: new Blob(['\uFEFF'+html], {type:'text/html'}), filename: `${name}.html` };
     }
 
     function genBilingual(orig, trans, name) {
-      const op = orig.split('\n\n'), tp = trans.split('\n\n');
+      // 加上 || '' 确保 split 不会崩溃
+      const op = (orig || '').split('\n\n'), tp = (trans || '').split('\n\n');
       let rows = '';
       for (let i=0; i<Math.max(op.length, tp.length); i++) rows += `<tr><td>${op[i]||''}</td><td>${tp[i]||''}</td></tr>`;
       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>双语-${name}</title><style>table{width:100%;border-collapse:collapse}td{width:50%;padding:8px;border:1px solid #ddd}</style></head><body><table>${rows}</table></body></html>`;
