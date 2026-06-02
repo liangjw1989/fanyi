@@ -10,7 +10,6 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
-    /* 全局样式 */
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
       font-family: 'Inter', sans-serif;
@@ -174,7 +173,6 @@
       <button class="tab-btn" id="convertTabBtn">🔄 格式转换</button>
     </div>
 
-    <!-- 翻译模块 -->
     <div id="translateModule">
       <div class="upload-area" id="translateUpload">
         <i class="fas fa-cloud-upload-alt"></i>
@@ -185,7 +183,6 @@
       <div id="translateFileList"></div>
     </div>
 
-    <!-- 转换模块 -->
     <div id="convertModule" style="display:none;">
       <div class="upload-area" id="convertUpload">
         <i class="fas fa-exchange-alt"></i>
@@ -197,17 +194,12 @@
     </div>
   </div>
 
-  <!-- 已完成列表 -->
   <div class="card">
-    <div style="font-weight:600; margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem;">
-      <i class="fas fa-check-circle" style="color:#10b981;"></i> 已完成的文档
-    </div>
-    <div id="completedList">
-      <div style="color:#94a3b8; text-align:center; padding:2rem;">暂无完成的文档</div>
-    </div>
+    <div style="font-weight:600; margin-bottom:1rem;"><i class="fas fa-check-circle" style="color:#10b981;"></i> 已完成的文档</div>
+    <div id="completedList"><div style="color:#94a3b8; text-align:center; padding:2rem;">暂无完成的文档</div></div>
   </div>
 
-  <div class="footer-hint">🔐 登录查看翻译记录 | 通过自有代理稳定翻译</div>
+  <div class="footer-hint">🔐 登录查看翻译记录 | 腾讯云函数驱动，稳定高速</div>
 </div>
 
 <!-- 二维码放大模态框 -->
@@ -264,7 +256,7 @@
 <script>
   (() => {
     // ==================== 配置 ====================
-    const WORKER_URL = https://broken-cake-fcff.326696097.workers.dev; 
+    const API_PROXY_URL = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
 
     // ==================== 全局状态 ====================
     const state = {
@@ -311,7 +303,7 @@
 
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    // ==================== 初始化 ====================
+    // 二维码初始化
     new QRCode(document.getElementById('qrContainer'), {
       text: window.location.href, width:36, height:36,
       colorDark:"#1e293b", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.L
@@ -337,17 +329,12 @@
       translateModule.style.display = 'none'; convertModule.style.display = 'block';
     });
 
-    // 文件上传监听
+    // 上传监听
     translateUpload.addEventListener('click', () => translateFileInput.click());
-    translateFileInput.addEventListener('change', e => {
-      if (e.target.files.length) { addFiles(e.target.files, 'translate'); translateFileInput.value = ''; }
-    });
+    translateFileInput.addEventListener('change', e => { if(e.target.files.length){ addFiles(e.target.files, 'translate'); translateFileInput.value=''; } });
     convertUpload.addEventListener('click', () => convertFileInput.click());
-    convertFileInput.addEventListener('change', e => {
-      if (e.target.files.length) { addFiles(e.target.files, 'convert'); convertFileInput.value = ''; }
-    });
+    convertFileInput.addEventListener('change', e => { if(e.target.files.length){ addFiles(e.target.files, 'convert'); convertFileInput.value=''; } });
 
-    // 拖拽支持
     [translateUpload, convertUpload].forEach(area => {
       area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('drag-over'); });
       area.addEventListener('dragleave', () => area.classList.remove('drag-over'));
@@ -422,7 +409,7 @@
     closeLoginModal.addEventListener('click', () => loginModal.classList.remove('active'));
     doLoginBtn.addEventListener('click', () => {
       const u = loginUsername.value.trim(), p = loginPassword.value.trim();
-      if (login(u, p)) { loginModal.classList.remove('active'); loginUsername.value = ''; loginPassword.value = ''; }
+      if (login(u, p)) { loginModal.classList.remove('active'); loginUsername.value=''; loginPassword.value=''; }
     });
     historyBtn.addEventListener('click', () => {
       const records = cleanOldRecords(loadAllRecords().filter(r => state.currentUser.isAdmin || r.username === state.currentUser.username));
@@ -482,6 +469,7 @@
           <div class="file-info"><div class="file-name">${f.name}</div><small>${f.filename}</small></div>
           <div class="file-actions">
             <button class="btn btn-outline btn-sm view-btn" data-text="${escapeHtml(f.translatedText || f.extractedText)}">查看</button>
+            <button class="btn btn-outline btn-sm copy-btn" data-text="${escapeHtml(f.translatedText || f.extractedText)}">复制</button>
             <button class="btn btn-outline btn-sm download-btn" data-url="${f.blobUrl}" data-filename="${f.filename}">下载</button>
           </div>
         </div>
@@ -522,6 +510,9 @@
       document.querySelectorAll('.view-btn').forEach(b => b.addEventListener('click', () => {
         const w = window.open('', '_blank'); w.document.write(`<pre style="white-space:pre-wrap;padding:1rem;">${b.dataset.text}</pre>`);
       }));
+      document.querySelectorAll('.copy-btn').forEach(b => b.addEventListener('click', () => {
+        navigator.clipboard.writeText(b.dataset.text).then(() => showToast('已复制到剪贴板')).catch(() => showToast('复制失败', true));
+      }));
     }
 
     function findFile(id) {
@@ -539,7 +530,7 @@
         const text = await extractText(f.file, f.ext);
         if (!text.trim()) throw new Error('没有文字');
         f.extractedText = text; f.status='translating'; f.progress=0; renderAll();
-        const translated = await callWorker(text, f.targetLang);
+        const translated = await callProxy(text, f.targetLang);
         f.translatedText = translated;
         const { blob, filename } = await generateOutput(translated, f.extractedText, f.fmt, f.name);
         f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done';
@@ -565,8 +556,8 @@
       renderAll();
     }
 
-    async function callWorker(text, target) {
-      const res = await fetch(WORKER_URL, {
+    async function callProxy(text, target) {
+      const res = await fetch(API_PROXY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, target })
