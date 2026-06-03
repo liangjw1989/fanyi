@@ -579,9 +579,13 @@ async function callProxy(text, target) {
   try {
     const data = JSON.parse(rawText);
     // 检查 code 是否是 0
-    if (data.code !== 0) {
-      throw new Error(data.error || data.message || '翻译请求失败');
-    }
+    // 3. 检查 code 是否是 0
+if (data.code !== 0) {
+  // 👇 改这里，让它显示真实错误
+  const errDetail = data.error || data.message || JSON.stringify(data) || '翻译请求失败';
+  console.error("后端返回的错误详情:", data);
+  throw new Error(errDetail);
+}
     
     // 尝试解析 result 字符串，提取里面的纯中文翻译
     // 因为后端返回的 result 本身是一个 JSON 字符串
