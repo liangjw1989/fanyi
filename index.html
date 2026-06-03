@@ -559,22 +559,39 @@
 
     // ==================== 核心修复 1：callProxy 正确读取 result ====================
     // ==================== 核心调试版 callProxy ====================
+// ==================== 稳健版 callProxy ====================
 async function callProxy(text, target) {
-  const res = await fetch(API_PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, target })
-  });
-  const data = await res.json();
-  
-  console.log("=== 后端返回的完整 JSON ===");
-  console.log(data); // 你刚才看到的是 {"code":0}
-  
-  // 1. 先检查 code 是否为 0
-  if (data.code !== 0) {
-    const errMsg = data.error || data.message || data.errorMessage || data.errMsg || '翻译接口错误';
-    throw new Error(errMsg);
+  try {
+    const res = await fetch(API_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, target })
+    });
+    const data = await res.json();
+    
+    console.log("翻译接口返回:", data);
+
+    // 如果 code 不是 0，但 result 存在，说明是接口的警告，依然放行
+    if (data.code !== 0) {
+      console.warn("翻译接口返回非0状态码:", data.code, data);
+      // 如果 result 没值，才真的抛出异常
+      if (!data.result) {
+        throw new Error(data.error || data.message || '翻译接口返回错误');
+      }
+    }
+
+    // 返回 result（必须在 data 里存在）
+    if (data.result === undefined) {
+        throw new Error('翻译接口没有返回翻译内容');
+    }
+    return data.result;
+
+  } catch (err) {
+    console.error("callProxy 捕获错误:", err);
+    // 在这里，我们抛出错误，translateFile 里的 catch 就会捕捉到它
+    throw new Error(err.message || '翻译接口错误');
   }
+}
   
   // 2. 重点检查：有没有 result 字段！
   if (data.result === undefined) {
