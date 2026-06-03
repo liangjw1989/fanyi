@@ -566,8 +566,7 @@
       renderAll();
     }
 
-    // ==================== 核心修复：稳健版 callProxy ====================
-    // ==================== 超强探测版 callProxy ====================
+    // ==================== 最终完美版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -576,7 +575,7 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 先获取原始响应文本，而不是直接解析 JSON
+    // 1. 先获取原始响应文本（防止非 JSON 错误导致解析报错）
     const rawText = await res.text();
     console.log("=== 后端返回的原始内容 ===");
     console.log(rawText);
@@ -610,22 +609,6 @@ async function callProxy(text, target) {
     throw new Error(err.message || '翻译接口错误');
   }
 }
-
-        // 返回 result（必须在 data 里存在）
-        if (data.result === undefined) {
-            throw new Error('翻译接口没有返回翻译内容');
-        }
-        return data.result;
-
-     } catch (err) {
-       console.error("callProxy 捕获错误:", err);
-       // 👇 加入这行，让浏览器弹窗告诉你具体错误是什么
-      alert("DEBUG: 具体错误信息 -> " + JSON.stringify(err));
-      throw new Error(err.message || '翻译接口错误');
-     }
-    }
-
-    async function extractText(file, ext) {
       switch(ext) {
         case 'pdf': return await extractPDF(file);
         case 'docx': case 'doc': return await extractDocx(file);
