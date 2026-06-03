@@ -593,10 +593,12 @@
         }
         return data.result;
 
-      } catch (err) {
-        console.error("callProxy 捕获错误:", err);
-        throw new Error(err.message || '翻译接口错误');
-      }
+     } catch (err) {
+       console.error("callProxy 捕获错误:", err);
+       // 👇 加入这行，让浏览器弹窗告诉你具体错误是什么
+      alert("DEBUG: 具体错误信息 -> " + JSON.stringify(err));
+      throw new Error(err.message || '翻译接口错误');
+     }
     }
 
     async function extractText(file, ext) {
