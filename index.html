@@ -566,49 +566,36 @@
       renderAll();
     }
 
-    // ==================== 终极诊断版 callProxy ====================
+    // ==================== callProxy 纯净版 ====================
 async function callProxy(text, target) {
+  const res = await fetch(API_PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, target })
+  });
+  const rawText = await res.text();
+  console.log("=== 后端返回的原始内容 ===", rawText);
+  
   try {
-    const res = await fetch(API_PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, target })
-    });
-
-    // 1. 获取原始响应文本
-    const rawText = await res.text();
-    console.log("=== 后端返回的原始内容 ===");
-    console.log(rawText);
-
-    // 2. 尝试解析为 JSON
-    let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch (e) {
-      throw new Error(`后端返回的不是 JSON，而是: ${rawText}`);
-    }
-
-    // 3. 检查 code 字段是否存在
-    if (data.code === undefined) {
-      // 如果 code 不存在，直接抛出原始内容，这是目前最需要看到的信息
-      throw new Error(`后端返回的 JSON 缺少 code 字段，原始内容为: ${rawText}`);
-    }
-
-    // 4. 检查 code 是否是 0
+    const data = JSON.parse(rawText);
+    // 检查 code 是否是 0
     if (data.code !== 0) {
-      const errMsg = data.error || data.message || data.errorMessage || `未知错误 (Code: ${data.code})`;
-      throw new Error(errMsg);
+      throw new Error(data.error || data.message || '翻译请求失败');
     }
-
-    // 5. 确保 result 存在
-    if (data.result === undefined) {
-        throw new Error('翻译接口没有返回翻译内容');
+    
+    // 尝试解析 result 字符串，提取里面的纯中文翻译
+    // 因为后端返回的 result 本身是一个 JSON 字符串
+    try {
+      const inner = JSON.parse(data.result);
+      if (inner.文本) return inner.文本; // 提取“文本”字段
+      if (inner.text) return inner.text; // 兼容“text”字段
+    } catch (e) {
+      // 如果 result 不是 JSON 格式，那它本身就是纯文本，直接返回
     }
-    return data.result;
-
+    
+    return data.result; // 返回纯翻译结果
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
-    // 使用 alert 直接显示具体的错误文本
     alert("DEBUG: 真实的错误信息 -> " + err.message);
     throw new Error(err.message || '翻译接口错误');
   }
