@@ -609,14 +609,16 @@ async function callProxy(text, target) {
     throw new Error(err.message || '翻译接口错误');
   }
 }
-      switch(ext) {
-        case 'pdf': return await extractPDF(file);
-        case 'docx': case 'doc': return await extractDocx(file);
-        case 'txt': return await file.text();
-        case 'png': case 'jpg': case 'jpeg': return await extractImage(file);
-        default: throw new Error('不支持');
-      }
-    }
+      // 👇 重点：头部加了 async
+async function extractText(file, ext) {
+  switch(ext) {
+    case 'pdf': return await extractPDF(file);
+    case 'docx': case 'doc': return await extractDocx(file);
+    case 'txt': return await file.text();
+    case 'png': case 'jpg': case 'jpeg': return await extractImage(file);
+    default: throw new Error('不支持');
+  }
+}
 
     async function extractPDF(file) {
       const buf = await file.arrayBuffer();
