@@ -566,7 +566,7 @@
       renderAll();
     }
 
-    // ==================== 最终完美版 callProxy ====================
+    // ==================== 终极诊断版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -575,7 +575,7 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 先获取原始响应文本（防止非 JSON 错误导致解析报错）
+    // 1. 获取原始响应文本
     const rawText = await res.text();
     console.log("=== 后端返回的原始内容 ===");
     console.log(rawText);
@@ -585,18 +585,22 @@ async function callProxy(text, target) {
     try {
       data = JSON.parse(rawText);
     } catch (e) {
-      // 如果解析失败，说明后端返回的是错误信息或纯文本
-      throw new Error(`后端返回非 JSON 格式内容: ${rawText.substring(0, 200)}...`);
+      throw new Error(`后端返回的不是 JSON，而是: ${rawText}`);
     }
 
-    // 3. 检查 code 是否成功
+    // 3. 检查 code 字段是否存在
+    if (data.code === undefined) {
+      // 如果 code 不存在，直接抛出原始内容，这是目前最需要看到的信息
+      throw new Error(`后端返回的 JSON 缺少 code 字段，原始内容为: ${rawText}`);
+    }
+
+    // 4. 检查 code 是否是 0
     if (data.code !== 0) {
-      // 优先读取具体的错误信息
       const errMsg = data.error || data.message || data.errorMessage || `未知错误 (Code: ${data.code})`;
       throw new Error(errMsg);
     }
 
-    // 4. 确保 result 存在
+    // 5. 确保 result 存在
     if (data.result === undefined) {
         throw new Error('翻译接口没有返回翻译内容');
     }
@@ -604,7 +608,7 @@ async function callProxy(text, target) {
 
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
-    // 使用 alert 直接显示具体的错误文本，方便你立刻看到
+    // 使用 alert 直接显示具体的错误文本
     alert("DEBUG: 真实的错误信息 -> " + err.message);
     throw new Error(err.message || '翻译接口错误');
   }
