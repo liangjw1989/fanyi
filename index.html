@@ -558,17 +558,32 @@
     }
 
     // ==================== 核心修复 1：callProxy 正确读取 result ====================
-    async function callProxy(text, target) {
-      const res = await fetch(API_PROXY_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, target })
-      });
-      const data = await res.json();
-      // 后端返回的是 {code:0, result:"翻译内容"}，不是 translated
-      if (data.code !== 0) throw new Error(data.error || '翻译接口错误');
-      return data.result;
-    }
+    // ==================== 核心调试版 callProxy ====================
+async function callProxy(text, target) {
+  // 1. 发送请求给腾讯云函数
+  const res = await fetch(API_PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, target })
+  });
+  
+  // 2. 获取后端返回的 JSON
+  const data = await res.json();
+  
+  // 👇 3. 打印到浏览器控制台（按 F12 查看）
+  console.log("=== 后端返回的完整 JSON ===");
+  console.log(data);
+
+  // 4. 如果返回的 code 不等于 0，说明翻译报错，抛出具体的错误信息
+  if (data.code !== 0) {
+    // 兼容各种可能的错误字段名
+    const errMsg = data.error || data.message || data.errorMessage || data.errMsg || '翻译接口未知错误';
+    throw new Error(errMsg);
+  }
+
+  // 5. 返回翻译结果（注意：我们后端返回的是 result，不是 translated）
+  return data.result;
+}
 
     async function extractText(file, ext) {
       switch(ext) {
