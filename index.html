@@ -566,38 +566,46 @@
       renderAll();
     }
 
-    // ==================== callProxy 纯净版 ====================
+    // ==================== 最终安全版 callProxy ====================
 async function callProxy(text, target) {
-  const res = await fetch(API_PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, target })
-  });
-  const rawText = await res.text();
-  console.log("=== 后端返回的原始内容 ===", rawText);
-  
   try {
-    const data = JSON.parse(rawText);
-    // 检查 code 是否是 0
-    // 3. 检查 code 是否是 0
-if (data.code !== 0) {
-  // 👇 改这里，让它显示真实错误
-  const errDetail = data.error || data.message || JSON.stringify(data) || '翻译请求失败';
-  console.error("后端返回的错误详情:", data);
-  throw new Error(errDetail);
-}
-    
-    // 尝试解析 result 字符串，提取里面的纯中文翻译
-    // 因为后端返回的 result 本身是一个 JSON 字符串
+    const res = await fetch(API_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, target })
+    });
+
+    const rawText = await res.text();
+    console.log("=== 后端返回的原始内容 ===");
+    console.log(rawText);
+
+    let data;
     try {
-      const inner = JSON.parse(data.result);
-      if (inner.文本) return inner.文本; // 提取“文本”字段
-      if (inner.text) return inner.text; // 兼容“text”字段
+      data = JSON.parse(rawText);
     } catch (e) {
-      // 如果 result 不是 JSON 格式，那它本身就是纯文本，直接返回
+      throw new Error(`后端返回非 JSON 格式内容: ${rawText.substring(0, 200)}...`);
     }
-    
-    return data.result; // 返回纯翻译结果
+
+    // 检查 code 是否成功
+    if (data.code !== 0) {
+      const errMsg = data.error || data.message || data.errorMessage || `未知错误 (Code: ${data.code})`;
+      throw new Error(errMsg);
+    }
+
+    // 🚀 核心修复：如果 result 是 undefined，将其设置为空字符串，防止应用崩溃
+    let finalResult = data.result || ''; 
+
+    // 尝试解析 result 字符串，提取里面的中文文本
+    try {
+      const inner = JSON.parse(finalResult);
+      if (inner.文本) finalResult = inner.文本; // 提取“文本”字段
+      else if (inner.text) finalResult = inner.text; // 兼容“text”字段
+    } catch (e) {
+      // 如果 result 不是 JSON 格式，那它本身就是纯文本，直接使用
+    }
+
+    return finalResult;
+
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
     alert("DEBUG: 真实的错误信息 -> " + err.message);
