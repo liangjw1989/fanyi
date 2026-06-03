@@ -199,7 +199,7 @@
     <div id="completedList"><div style="color:#94a3b8; text-align:center; padding:2rem;">暂无完成的文档</div></div>
   </div>
 
-  <div class="footer-hint">🔐 登录查看翻译记录 | 腾讯云函数驱动，稳定高速</div>
+  <div class="footer-hint">🔐 登录后使用完整功能</div>
 </div>
 
 <!-- 二维码放大模态框 -->
@@ -483,6 +483,8 @@
       const targetFormats = type === 'translate' ? ['pdf','docx','txt','html','bilingual'] : ['pdf','docx','txt'];
       const formatSelect = `<select class="fmt-select" data-id="${f.id}">${targetFormats.map(fmt => `<option value="${fmt}" ${f.fmt===fmt?'selected':''}>${fmt.toUpperCase()}</option>`).join('')}</select>`;
       const actionBtn = `<button class="btn btn-primary btn-sm process-btn" data-id="${f.id}">${type === 'translate' ? '翻译' : '转换'}</button>`;
+      // 👇 新增：删除按钮
+      const deleteBtn = `<button class="btn btn-danger btn-sm delete-btn" data-id="${f.id}"><i class="fas fa-trash"></i></button>`;
       return `
         <div class="file-item">
           <i class="fas fa-file"></i>
@@ -491,7 +493,7 @@
             <div class="progress-bar"><div class="progress-fill" style="width:${f.progress}%"></div></div>
             <small>${f.status === 'error' ? '失败' : f.status === 'done' ? '完成' : '等待'}</small>
           </div>
-          <div class="file-actions">${langSelect}${formatSelect}${actionBtn}</div>
+          <div class="file-actions">${langSelect}${formatSelect}${actionBtn}${deleteBtn}</div>
         </div>`;
     }
 
@@ -504,6 +506,13 @@
       }));
       document.querySelectorAll('.process-btn').forEach(b => b.addEventListener('click', () => {
         const f = findFile(parseInt(b.dataset.id)); if(f) processFile(f);
+      }));
+      // 👇 新增：删除事件绑定
+      document.querySelectorAll('.delete-btn').forEach(b => b.addEventListener('click', () => {
+        const id = parseInt(b.dataset.id);
+        state.translateFiles = state.translateFiles.filter(f => f.id !== id);
+        state.convertFiles = state.convertFiles.filter(f => f.id !== id);
+        renderAll();
       }));
       document.querySelectorAll('.download-btn').forEach(b => b.addEventListener('click', () => {
         const a = document.createElement('a'); a.href = b.dataset.url; a.download = b.dataset.filename; a.click();
@@ -557,51 +566,38 @@
       renderAll();
     }
 
-    // ==================== 核心修复 1：callProxy 正确读取 result ====================
-    // ==================== 核心调试版 callProxy ====================
-// ==================== 稳健版 callProxy ====================
-async function callProxy(text, target) {
-  try {
-    const res = await fetch(API_PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, target })
-    });
-    const data = await res.json();
-    
-    console.log("翻译接口返回:", data);
+    // ==================== 核心修复：稳健版 callProxy ====================
+    async function callProxy(text, target) {
+      try {
+        const res = await fetch(API_PROXY_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, target })
+        });
+        const data = await res.json();
+        
+        console.log("翻译接口返回:", data);
 
-    // 如果 code 不是 0，但 result 存在，说明是接口的警告，依然放行
-    if (data.code !== 0) {
-      console.warn("翻译接口返回非0状态码:", data.code, data);
-      // 如果 result 没值，才真的抛出异常
-      if (!data.result) {
-        throw new Error(data.error || data.message || '翻译接口返回错误');
+        // 如果 code 不是 0，但 result 存在，说明是接口的警告，依然放行
+        if (data.code !== 0) {
+          console.warn("翻译接口返回非0状态码:", data.code, data);
+          // 如果 result 没值，才真的抛出异常
+          if (!data.result) {
+            throw new Error(data.error || data.message || '翻译接口返回错误');
+          }
+        }
+
+        // 返回 result（必须在 data 里存在）
+        if (data.result === undefined) {
+            throw new Error('翻译接口没有返回翻译内容');
+        }
+        return data.result;
+
+      } catch (err) {
+        console.error("callProxy 捕获错误:", err);
+        throw new Error(err.message || '翻译接口错误');
       }
     }
-
-    // 返回 result（必须在 data 里存在）
-    if (data.result === undefined) {
-        throw new Error('翻译接口没有返回翻译内容');
-    }
-    return data.result;
-
-  } catch (err) {
-    console.error("callProxy 捕获错误:", err);
-    // 在这里，我们抛出错误，translateFile 里的 catch 就会捕捉到它
-    throw new Error(err.message || '翻译接口错误');
-  }
-}
-  
-  // 2. 重点检查：有没有 result 字段！
-  if (data.result === undefined) {
-    console.error("⚠️ 后端返回了 code 0，但没有返回 result 字段！");
-    throw new Error("后端没有返回翻译结果，请检查云函数代码（可能是 response.TargetText 为空）");
-  }
-  
-  // 3. 只有 result 存在才返回
-  return data.result;
-}
 
     async function extractText(file, ext) {
       switch(ext) {
@@ -638,7 +634,6 @@ async function callProxy(text, target) {
       return text.trim();
     }
 
-    // ==================== 核心修复 2：输出函数加上默认值防止 undefined 崩溃 ====================
     async function generateOutput(translated, original, fmt, originalName, isConvert = false) {
       const base = originalName.replace(/\.[^.]+$/, '');
       const prefix = isConvert ? '_转换' : '_翻译';
@@ -657,14 +652,12 @@ async function callProxy(text, target) {
       const doc = new jsPDF();
       const maxW = doc.internal.pageSize.getWidth() - 40;
       doc.setFontSize(12);
-      // 加上 text || '' 防止崩溃
       doc.text(doc.splitTextToSize(text || '', maxW), 20, 20);
       return { blob: doc.output('blob'), filename: `${name}.pdf` };
     }
 
     async function genDOCX(text, name) {
       const { Document, Packer, Paragraph, TextRun } = docx;
-      // 加上 text || '' 防止崩溃
       const paras = (text || '').split('\n\n').filter(p => p.trim()).map(p =>
         new Paragraph({ children: [new TextRun({text: (p || '').trim(), size:24})], spacing:{after:200}, indent:{firstLine:480} })
       );
@@ -682,7 +675,6 @@ async function callProxy(text, target) {
     }
 
     function genBilingual(orig, trans, name) {
-      // 加上 || '' 确保 split 不会崩溃
       const op = (orig || '').split('\n\n'), tp = (trans || '').split('\n\n');
       let rows = '';
       for (let i=0; i<Math.max(op.length, tp.length); i++) rows += `<tr><td>${op[i]||''}</td><td>${tp[i]||''}</td></tr>`;
