@@ -566,7 +566,7 @@
       renderAll();
     }
 
-    // ==================== 最终安全版 callProxy ====================
+    // ==================== 绝对防弹版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -592,18 +592,20 @@ async function callProxy(text, target) {
       throw new Error(errMsg);
     }
 
-    // 🚀 核心修复：如果 result 是 undefined，将其设置为空字符串，防止应用崩溃
+    // 🚀 核心修复点：永远不要直接返回 rawText 或 data.result，先做防御性解析！
+    // 如果 result 是 undefined，就变成空字符串，防止整个应用崩溃
     let finalResult = data.result || ''; 
 
-    // 尝试解析 result 字符串，提取里面的中文文本
+    // 如果 result 是个 JSON 字符串（比如 {"文本":"你好世界"}），就把它解析成纯文本
     try {
-      const inner = JSON.parse(finalResult);
-      if (inner.文本) finalResult = inner.文本; // 提取“文本”字段
-      else if (inner.text) finalResult = inner.text; // 兼容“text”字段
+      const parsedInner = JSON.parse(finalResult);
+      if (parsedInner.文本) finalResult = parsedInner.文本;   // 提取中文“文本”字段
+      else if (parsedInner.text) finalResult = parsedInner.text; // 兼容英文“text”字段
     } catch (e) {
-      // 如果 result 不是 JSON 格式，那它本身就是纯文本，直接使用
+      // 如果解析失败，说明 finalResult 本身就是纯文本，无需额外处理
     }
 
+    // 返回最终提取的纯文本结果
     return finalResult;
 
   } catch (err) {
