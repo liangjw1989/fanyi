@@ -567,25 +567,49 @@
     }
 
     // ==================== 核心修复：稳健版 callProxy ====================
-    async function callProxy(text, target) {
-      try {
-        const res = await fetch(API_PROXY_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, target })
-        });
-        const data = await res.json();
-        
-        console.log("翻译接口返回:", data);
+    // ==================== 超强探测版 callProxy ====================
+async function callProxy(text, target) {
+  try {
+    const res = await fetch(API_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, target })
+    });
 
-        // 如果 code 不是 0，但 result 存在，说明是接口的警告，依然放行
-        if (data.code !== 0) {
-          console.warn("翻译接口返回非0状态码:", data.code, data);
-          // 如果 result 没值，才真的抛出异常
-          if (!data.result) {
-            throw new Error(data.error || data.message || '翻译接口返回错误');
-          }
-        }
+    // 1. 先获取原始响应文本，而不是直接解析 JSON
+    const rawText = await res.text();
+    console.log("=== 后端返回的原始内容 ===");
+    console.log(rawText);
+
+    // 2. 尝试解析为 JSON
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (e) {
+      // 如果解析失败，说明后端返回的是错误信息或纯文本
+      throw new Error(`后端返回非 JSON 格式内容: ${rawText.substring(0, 200)}...`);
+    }
+
+    // 3. 检查 code 是否成功
+    if (data.code !== 0) {
+      // 优先读取具体的错误信息
+      const errMsg = data.error || data.message || data.errorMessage || `未知错误 (Code: ${data.code})`;
+      throw new Error(errMsg);
+    }
+
+    // 4. 确保 result 存在
+    if (data.result === undefined) {
+        throw new Error('翻译接口没有返回翻译内容');
+    }
+    return data.result;
+
+  } catch (err) {
+    console.error("callProxy 捕获错误:", err);
+    // 使用 alert 直接显示具体的错误文本，方便你立刻看到
+    alert("DEBUG: 真实的错误信息 -> " + err.message);
+    throw new Error(err.message || '翻译接口错误');
+  }
+}
 
         // 返回 result（必须在 data 里存在）
         if (data.result === undefined) {
