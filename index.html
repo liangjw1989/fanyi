@@ -566,7 +566,7 @@
       renderAll();
     }
 
-    // ==================== 最终实锤版 callProxy ====================
+    // ==================== 最终超强防御版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -575,45 +575,54 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
+    // 1. 获取原始文本，无论如何都先打印出来
     const rawText = await res.text();
-    console.log("=== 后端返回的原始内容 ===");
+    console.log("=== 后端返回的原始内容 (rawText) ===");
     console.log(rawText);
 
-    // 尝试解析 JSON
+    // 2. 检查是否为空
+    if (!rawText) {
+      throw new Error('后端返回的内容为空 (empty string)');
+    }
+
+    // 3. 尝试解析 JSON
     let data;
     try {
       data = JSON.parse(rawText);
     } catch (e) {
-      // 如果后端返回的不是 JSON，直接报出原始内容
-      throw new Error(`后端返回的不是 JSON! 内容是: ${rawText}`);
+      // 如果解析失败，直接抛出原始内容，这是最关键的一步
+      throw new Error(`后端返回的内容不是有效的 JSON！\n原始内容如下: ${rawText.substring(0, 500)}`);
     }
 
-    // 🚀 核心修改：如果后端返回空对象 {}，这里会直接报出 rawText
-    if (!data.code && data.code !== 0) {
-      // 如果是空对象，直接抛出 rawText
-      throw new Error(`后端返回的 JSON 缺少 code 字段！原始内容为: ${rawText}`);
-    }
-
-    // 检查 code 是否成功
+    // 4. 检查 code 字段
     if (data.code !== 0) {
-      const errMsg = data.error || data.message || data.errorMessage || `未知错误 (Code: ${data.code})`;
-      throw new Error(errMsg);
+      const errorMessage = data.error || data.message || data.errorMessage || `未知错误 (Code: ${data.code})`;
+      throw new Error(errorMessage);
     }
 
-    // 提取翻译结果
-    let finalResult = data.result || ''; 
+    // 5. 提取 result
+    let finalResult = data.result || '';
+    if (!finalResult) {
+      // 如果 result 为空，要看是不是空字符串
+      console.warn("后端返回的 result 是空的，可能是翻译结果为空");
+      return ''; 
+    }
+
+    // 6. 尝试解析 result 里包裹的 JSON
     try {
       const parsedInner = JSON.parse(finalResult);
-      if (parsedInner.文本) finalResult = parsedInner.文本;
-      else if (parsedInner.text) finalResult = parsedInner.text;
-    } catch (e) {}
-    
+      if (parsedInner.文本) return parsedInner.文本;
+      if (parsedInner.text) return parsedInner.text;
+    } catch (e) {
+      // 如果解析失败，说明 finalResult 本身就是纯文本，直接使用
+    }
+
     return finalResult;
 
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
-    // ⚠️ 这里直接弹窗显示后端返回的原始内容
-    alert("DEBUG: 后台返回的原始内容 -> " + err.message);
+    // 重要：弹窗显示真实错误
+    alert("DEBUG: 真实错误信息 -> " + err.message);
     throw new Error(err.message || '翻译接口错误');
   }
 }
