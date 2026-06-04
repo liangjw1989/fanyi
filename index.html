@@ -566,7 +566,7 @@
       renderAll();
     }
 
-    // ==================== 最终强健版 callProxy ====================
+    // ==================== 终极防护版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -575,43 +575,37 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 读取原始响应
     const rawText = await res.text();
     console.log("=== 后端返回的原始内容 ===");
-    console.log(rawText); // 这里一定要打印出来，才能看见后端到底返回了什么
+    console.log(rawText); // 一定要打印出来看
 
-    // 2. 尝试解析 JSON
     let data;
     try {
       data = JSON.parse(rawText);
     } catch (e) {
-      throw new Error(`后端返回的不是 JSON，而是: ${rawText}`);
+      throw new Error(`后端返回的不是 JSON，而是: ${rawText.substring(0, 100)}...`);
     }
 
-    // 3. 判断是否真的有 code 字段
-    // 如果后端返回了空对象 {}，data.code 就是 undefined
-    if (data.code === undefined) {
-      // 直接抛出原始内容，这是最重要的一步
-      throw new Error(`后端返回的 JSON 缺少 code 字段，原始内容为: ${rawText}`);
-    }
-
-    // 4. 如果 code 不是 0
-    if (data.code !== 0) {
+    // ✅ 核心修改：直接判断是否成功
+    if (data.code === 0) {
+      // 成功！提取 result
+      let finalResult = data.result || '';
+      
+      // 尝试解析 result 里的 JSON 字符串，提取纯文本
+      try {
+        const parsedInner = JSON.parse(finalResult);
+        if (parsedInner.文本) finalResult = parsedInner.文本; // 提取“文本”字段
+        else if (parsedInner.text) finalResult = parsedInner.text; // 兼容“text”字段
+      } catch (e) {
+        // 如果解析失败，说明 result 本身就是纯文本
+      }
+      
+      return finalResult;
+    } else {
+      // 失败！提取错误信息
       const errMsg = data.error || data.message || data.errorMessage || `未知错误 (Code: ${data.code})`;
       throw new Error(errMsg);
     }
-
-    // 5. 提取翻译结果
-    let finalResult = data.result || ''; 
-    // 尝试解析 result 里的 JSON 包裹
-    try {
-      const parsedInner = JSON.parse(finalResult);
-      if (parsedInner.文本) finalResult = parsedInner.文本;   // 提取“文本”字段
-      else if (parsedInner.text) finalResult = parsedInner.text; // 提取“text”字段
-    } catch (e) {
-      // 如果解析失败，说明 result 就是纯文本，直接使用
-    }
-    return finalResult;
 
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
