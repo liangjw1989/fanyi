@@ -566,7 +566,7 @@
       renderAll();
     }
 
-    // ==================== 终极大结局版 callProxy ====================
+    // ==================== 最终强力诊断版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -578,43 +578,39 @@ async function callProxy(text, target) {
     const rawText = await res.text();
     console.log("=== 后端返回的原始内容 ===", rawText);
 
-    // 1. 尝试解析 JSON
     let data;
     try {
       data = JSON.parse(rawText);
     } catch (e) {
-      // 如果解析失败，直接报出原始内容
-      throw new Error(`后端返回的不是 JSON，内容是: ${rawText.substring(0, 100)}...`);
+      throw new Error(`后端返回的不是 JSON，内容是: ${rawText.substring(0, 200)}`);
     }
 
-    // 2. 检查是否存在 code 字段
+    // 🚀 核心修改：如果缺少 code，直接把原始内容弹窗出来
     if (data.code === undefined) {
-      throw new Error('后端返回的 JSON 缺少 code 字段，请检查云函数是否正常');
+      alert(`后端返回的内容缺少 code 字段！原始内容是: ${rawText}`);
+      throw new Error(`后端返回的 JSON 缺少 code 字段，原始内容: ${rawText}`);
     }
 
-    // 3. 检查 code 是否为 0
+    // 检查 code 是否为 0
     if (data.code !== 0) {
       const errMsg = data.error || data.message || data.errorMessage || `未知错误 (Code: ${data.code})`;
       throw new Error(errMsg);
     }
 
-    // 4. 获取 result
+    // 提取 result
     let finalResult = data.result || '';
     if (!finalResult) {
       throw new Error('后端返回的 result 字段为空');
     }
 
-    // 5. 尝试提取嵌套在 JSON 字符串里的中文文本
+    // 解析嵌套的 JSON
     try {
       const parsedInner = JSON.parse(finalResult);
-      if (parsedInner.文本) finalResult = parsedInner.文本; // 提取“文本”字段
-      else if (parsedInner.text) finalResult = parsedInner.text; // 兼容“text”字段
-    } catch (e) {
-      // 如果解析失败，说明 finalResult 本身就是纯文本，直接使用
-      console.log("result 不是嵌套 JSON，直接作为纯文本返回");
-    }
+      if (parsedInner.文本) finalResult = parsedInner.文本;
+      else if (parsedInner.text) finalResult = parsedInner.text;
+    } catch (e) {}
 
-    return finalResult; // 🎉 返回纯文本翻译结果
+    return finalResult;
 
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
