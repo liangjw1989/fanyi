@@ -566,7 +566,7 @@
       renderAll();
     }
 
-    // ==================== 最终超强防御版 callProxy ====================
+    // ==================== 暴力调试版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -575,53 +575,32 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 获取原始文本，无论如何都先打印出来
+    // 直接获取原始文本，不做任何解析
     const rawText = await res.text();
-    console.log("=== 后端返回的原始内容 (rawText) ===");
-    console.log(rawText);
+    
+    // 🔥 核心：直接在弹窗里把后端返回的原始内容显示出来
+    alert(`后端返回的原始内容: ${rawText}`);
+    console.log("=== 后端返回的原始内容 ===", rawText);
 
-    // 2. 检查是否为空
-    if (!rawText) {
-      throw new Error('后端返回的内容为空 (empty string)');
-    }
-
-    // 3. 尝试解析 JSON
+    // 尝试解析一下，如果解析失败直接报错
     let data;
     try {
       data = JSON.parse(rawText);
     } catch (e) {
-      // 如果解析失败，直接抛出原始内容，这是最关键的一步
-      throw new Error(`后端返回的内容不是有效的 JSON！\n原始内容如下: ${rawText.substring(0, 500)}`);
+      throw new Error(`后端返回的不是JSON，内容是: ${rawText}`);
     }
 
-    // 4. 检查 code 字段
+    // 检查 code 是否为 0
     if (data.code !== 0) {
-      const errorMessage = data.error || data.message || data.errorMessage || `未知错误 (Code: ${data.code})`;
-      throw new Error(errorMessage);
+      const errMsg = data.error || data.message || `未知错误 (Code: ${data.code})`;
+      throw new Error(errMsg);
     }
 
-    // 5. 提取 result
-    let finalResult = data.result || '';
-    if (!finalResult) {
-      // 如果 result 为空，要看是不是空字符串
-      console.warn("后端返回的 result 是空的，可能是翻译结果为空");
-      return ''; 
-    }
-
-    // 6. 尝试解析 result 里包裹的 JSON
-    try {
-      const parsedInner = JSON.parse(finalResult);
-      if (parsedInner.文本) return parsedInner.文本;
-      if (parsedInner.text) return parsedInner.text;
-    } catch (e) {
-      // 如果解析失败，说明 finalResult 本身就是纯文本，直接使用
-    }
-
-    return finalResult;
+    // 返回翻译结果
+    return data.result || '';
 
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
-    // 重要：弹窗显示真实错误
     alert("DEBUG: 真实错误信息 -> " + err.message);
     throw new Error(err.message || '翻译接口错误');
   }
