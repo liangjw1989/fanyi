@@ -575,7 +575,7 @@
       renderAll();
     }
 
-    // ==================== 最终完美提取版 callProxy ====================
+    // ==================== 绝对防崩版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -592,39 +592,46 @@ async function callProxy(text, target) {
     try {
       data = JSON.parse(rawText);
     } catch (e) {
-      throw new Error(`后端返回的内容不是有效的 JSON，内容: ${rawText.substring(0, 100)}...`);
+      // 如果后端连 JSON 都不是，直接原样返回
+      console.warn("后端返回的不是 JSON，直接返回原文");
+      return rawText; 
     }
 
-    // 2. 检查成功状态
+    // 2. 如果 data 是空对象 {} 或缺少 code
+    if (data.code === undefined) {
+      // 尝试直接获取 result，如果也没有，就返回原始文本
+      if (data.result !== undefined) {
+        return data.result;
+      }
+      // 如果两者都没有，说明后端彻底崩了，返回空但不报错，防止页面崩溃
+      console.error("后端返回空对象或无效数据:", data);
+      return ""; 
+    }
+
+    // 3. 如果 code 不是 0
     if (data.code !== 0) {
-      const errMsg = data.error || data.message || `未知错误 (Code: ${data.code})`;
-      throw new Error(errMsg);
+      // 尝试读取错误信息，如果没有，就返回状态码
+      const errMsg = data.error || data.message || `后端返回状态码: ${data.code}`;
+      // 这里可以选择抛出错误，或者为了稳定直接返回错误信息
+      // 考虑到你的应用，直接返回错误信息可能更好，避免弹窗
+      return `[错误] ${errMsg}`;
     }
 
-    // 3. 获取 result
+    // 4. 如果 code 是 0，提取翻译文本
     let finalResult = data.result || '';
-
-    // 4. 尝试解析 result 里的嵌套 JSON，提取中文“文本”
-    // 注意：后端返回的结构是 `{"code":0, "result":"{\"文本\":\"中文翻译...\"}"}`
     try {
       const parsedInner = JSON.parse(finalResult);
-      if (parsedInner.文本) {
-        finalResult = parsedInner.文本; // ✅ 提取真正的翻译内容
-      } else if (parsedInner.text) {
-        finalResult = parsedInner.text; // 兼容其他格式
-      }
+      if (parsedInner.文本) finalResult = parsedInner.文本;
+      else if (parsedInner.text) finalResult = parsedInner.text;
     } catch (e) {
-      // 如果解析失败，说明 finalResult 本身就是纯文本，直接使用
+      // 如果解析失败，说明 finalResult 就是纯文本
     }
-
-    // 5. 返回提取到的中文翻译（绝对防崩）
-    return finalResult || ''; 
+    return finalResult;
 
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
-    // 这里弹窗显示具体错误，方便你锁定问题
-    alert("DEBUG: 错误详情 -> " + err.message);
-    throw new Error(err.message || '翻译接口错误');
+    // 把错误信息返回，而不是抛出，保证流程不会断
+    return `[系统错误] ${err.message}`;
   }
 }
       // 👇 重点：头部加了 async
