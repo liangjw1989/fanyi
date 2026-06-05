@@ -575,7 +575,7 @@
       renderAll();
     }
 
-    // ==================== 终极诊断版 callProxy ====================
+    // ==================== 完美提取版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -584,20 +584,46 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 直接获取原始文本，不做任何 JSON.parse
     const rawText = await res.text();
-    
-    // 2. 如果为空，返回提示
-    if (!rawText) {
-      return "后端返回的内容为空";
+    console.log("=== 后端原始返回 ===", rawText);
+
+    // 步骤1: 解析最外层的 JSON
+    let outer;
+    try {
+      outer = JSON.parse(rawText);
+    } catch (e) {
+      return rawText; // 如果最外层都不是 JSON，直接返回原文
     }
 
-    // 3. 直接返回原始文本，你马上就能看到“真凶”
-    return rawText; 
+    // 步骤2: 检查后端状态
+    if (outer.code !== 0) {
+      return outer.error || outer.message || `后端错误码: ${outer.code}`;
+    }
+
+    // 步骤3: 获取 result (它是一个 JSON 字符串，比如 "{\"文本\":\"你好\"}")
+    const resultStr = outer.result || "";
+    if (!resultStr) return "翻译结果为空";
+
+    // 步骤4: 解析 result 里的 JSON 字符串，提取 "文本" 字段
+    try {
+      const inner = JSON.parse(resultStr);
+      if (inner.文本) {
+        return inner.文本; // ✅ 成功提取中文翻译！
+      }
+      if (inner.text) {
+        return inner.text; // 兼容其他字段名
+      }
+    } catch (e) {
+      // 如果解析失败，说明 result 本身就是纯文本
+      return resultStr;
+    }
+
+    // 兜底
+    return resultStr;
 
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
-    return `前端请求出错: ${err.message}`;
+    return `前端错误: ${err.message}`;
   }
 }
       // 👇 重点：头部加了 async
