@@ -575,7 +575,7 @@
       renderAll();
     }
 
-    // ==================== 终极真相版 callProxy ====================
+    // ==================== 最终剥洋葱版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -584,41 +584,50 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 获取原始内容，不做任何预处理
+    // 1. 拿到最原始的响应文本
     const rawText = await res.text();
-    console.log("=== 后端返回的原始内容 ===", rawText);
+    console.log("=== 后端原始返回 ===", rawText);
 
-    // 2. 如果后端返回空字符串，直接返回
-    if (!rawText) return "后端返回空";
-
-    // 3. 尝试解析 JSON
-    let data;
+    // 2. 尝试解析最外层的 JSON
+    let outerData;
     try {
-      data = JSON.parse(rawText);
+      outerData = JSON.parse(rawText);
     } catch (e) {
-      // 如果连 JSON 都不是，直接返回原始内容（可能是个 HTML 错误页）
+      // 如果最外层解析失败，说明后端返回了完全不对的东西，直接返回原文
       return rawText; 
     }
 
-    // 4. 只要代码不是 0，或者缺少 result，我们就返回原始内容，让你亲眼看到
-    if (data.code !== 0 || !data.result) {
-      return rawText; // 👈 这里直接返回原始 rawText，所有问题都会现形
+    // 3. 如果后端明确报错（code !== 0），直接返回错误信息
+    if (outerData.code !== 0) {
+      return outerData.error || outerData.message || `后端错误码：${outerData.code}`;
     }
 
-    // 5. 如果一切完美，提取翻译
-    // 你的后端格式是：{"code":0,"result":"{\"文本\":\"你好...\"}"}
-    let finalResult = data.result;
+    // 4. ✅ 核心步骤：提取 result 里的内容
+    // 你的后端返回的是：`{"code":0, "result":"{\"文本\":\"你好...\"}"}`
+    // 这里的 result 是字符串，需要再次解析
+    const innerStr = outerData.result || "";
+    let innerObj;
     try {
-      const inner = JSON.parse(finalResult);
-      if (inner.文本) return inner.文本;
-      if (inner.text) return inner.text;
-    } catch (e) {}
-    
-    return finalResult;
+      innerObj = JSON.parse(innerStr);
+    } catch (e) {
+      // 如果内层解析失败，说明 result 本身就是纯文本，直接返回它
+      return innerStr;
+    }
+
+    // 5. ✅ 提取目标字段 "文本"，返回纯净的中文翻译
+    if (innerObj.文本) {
+      return innerObj.文本; // 成功提取！
+    }
+    if (innerObj.text) {
+      return innerObj.text; // 兼容其他可能出现的字段名
+    }
+
+    // 6. 兜底：如果解析成功但没找到目标字段，返回解析后的对象（一般不会走到这里）
+    return JSON.stringify(innerObj);
 
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
-    return `前端错误: ${err.message}`;
+    return `前端出现错误：${err.message}`;
   }
 }
       // 👇 重点：头部加了 async
