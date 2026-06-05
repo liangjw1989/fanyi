@@ -575,7 +575,7 @@
       renderAll();
     }
 
-    // ==================== 完美解析版 callProxy ====================
+    // ==================== 最终必杀版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -592,39 +592,40 @@ async function callProxy(text, target) {
     try {
       data = JSON.parse(rawText);
     } catch (e) {
-      return rawText; // 如果不是 JSON，直接返回原文
+      // 如果连最外层都不是 JSON，直接返回原始内容（防崩）
+      return rawText || "";
     }
 
-    // 2. 检查 code 字段
-    if (data.code !== 0) {
-      console.warn("后端返回错误:", data.error || data.message);
-      return "";
-    }
+    // 2. 拿到 result 字段（它是一个 JSON 字符串，例如 "{\"文本\":\"翻译内容...\"}"）
+    let resultStr = data.result || "";
 
-    // 3. 获取 result 字段（它是一个 JSON 字符串，如 "{\"文本\":\"你好...\"}"）
-    let finalResult = data.result || "";
-
-    // 4. 尝试解析 result 里的嵌套 JSON，提取 "文本" 字段
+    // 3. 尝试解析 resultStr，提取里面的 "文本"
+    // 注意：这是核心步骤，我们用 try...catch 包裹，防止解析失败导致整个函数崩溃
     try {
-      // 只有当 finalResult 看起来像是 JSON 字符串时才解析
-      if (typeof finalResult === 'string' && finalResult.trim().startsWith('{')) {
-        const parsedInner = JSON.parse(finalResult);
+      // 只有当 resultStr 看起来像 JSON 字符串时才解析
+      if (typeof resultStr === 'string' && resultStr.trim().startsWith('{')) {
+        const parsedInner = JSON.parse(resultStr);
+        // 提取 "文本" 字段
         if (parsedInner.文本) {
-          return parsedInner.文本; // ✅ 提取成功！
-        } else if (parsedInner.text) {
-          return parsedInner.text; // 兼容其他格式
+          return parsedInner.文本; // ✅ 成功提取！
+        }
+        // 兼容 "text" 字段
+        if (parsedInner.text) {
+          return parsedInner.text;
         }
       }
     } catch (e) {
-      // 如果解析失败，说明 finalResult 本身就是纯文本
+      // 解析出错没关系，我们忽略它，继续往下走
+      console.warn("解析 result 里的嵌套 JSON 失败，直接返回原始 resultStr");
     }
 
-    // 5. 返回最终提取到的内容（防御性返回）
-    return finalResult || "";
+    // 4. 如果上面都没成功，直接返回 resultStr 本身
+    // 这样即便解析失败，PDF 里也会显示 resultStr 的内容，绝对不会是“空”！
+    return resultStr;
 
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
-    return "";
+    return ""; // 灾难性错误时返回空
   }
 }
       // 👇 重点：头部加了 async
