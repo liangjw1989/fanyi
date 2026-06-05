@@ -679,46 +679,49 @@ async function extractText(file, ext) {
       }
     }
 
-    // ==================== 高清可复制版 genPDF ====================
+    // ==================== 高清多页版 genPDF（最终推荐） ====================
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
-
-  // 1. 初始化 A4 PDF，使用一个能较好支持中文的字体名称（如果不加载字体，部分中文可能不乱码）
-  // 注意：若要完全解决中文乱码，需要加载中文字体文件。这里先用默认字体尝试，
-  // 若乱码则需在 jsPDF 中引入宋体等字体包（比如通过 addFileToVFS/addFont）。
-  // 此处提供一种无需外部字体的替代方案：直接使用 text 方法，依赖浏览器默认字体渲染。
-  // 建议使用以下方式确保中文正常：
-
-  const doc = new jsPDF('p', 'mm', 'a4');
   
-  // 可选：注册标准宋体（这步需要下载字体文件并转换，略复杂）。
-  // 对于大部分现代浏览器，它可能会回退到系统字体。如果显示乱码，我们再用图片版。
-  // 为了立即可用，我这里调优原生渲染：
+  // 1. 创建一个临时 div 来包裹文字（必须是 SimSun 宋体）
+  const tempDiv = document.createElement('div');
+  tempDiv.style.width = '170mm';     // 匹配 A4 纸的宽度
+  tempDiv.style.padding = '15mm';    // 页边距
+  tempDiv.style.fontSize = '14px';   // 字号
+  tempDiv.style.fontFamily = 'SimSun, serif'; // 必须指定中文字体
+  tempDiv.style.lineHeight = '1.8';
+  tempDiv.style.color = '#000';
+  tempDiv.innerText = text || '暂无内容';
 
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 20; 
-  const maxWidth = pageWidth - 2 * margin;
-  let y = margin;
+  document.body.appendChild(tempDiv);
+  
+  // 2. 使用 html2canvas 渲染成图片（关键：scale: 2 让清晰度翻倍）
+  const canvas = await html2canvas(tempDiv, { scale: 2 });
+  document.body.removeChild(tempDiv);
 
-  const fontSize = 12;
-  doc.setFontSize(fontSize);
-  const lineHeight = fontSize * 0.3528; // mm 单位，12pt ≈ 4.2mm
+  // 3. 将图片转为数据
+  const imgData = canvas.toDataURL('image/jpeg', 1.0);
 
-  // 2. 把文本按宽度拆分成行
-  const lines = doc.splitTextToSize(text, maxWidth);
+  // 4. 开始处理 PDF
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pdfWidth = doc.internal.pageSize.getWidth();
+  const pdfHeight = doc.internal.pageSize.getHeight();
+  const imgWidth = pdfWidth - 20; // 左右留白
+  const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-  // 3. 逐行输出，自动分页
-  for (let i = 0; i < lines.length; i++) {
-    if (y > pageHeight - margin) {
-      doc.addPage();
-      y = margin;
-    }
-    doc.text(lines[i], margin, y);
-    y += lineHeight;
+  // 5. 自动分页逻辑（处理长文本）
+  const pageHeight = pdfHeight - 20;
+  let heightLeft = imgHeight;
+  let position = 10;
+
+  while (heightLeft > 0) {
+    if (position > 10) doc.addPage();
+    const currentPageHeight = Math.min(heightLeft, pageHeight);
+    doc.addImage(imgData, 'JPEG', 10, position, imgWidth, currentPageHeight);
+    heightLeft -= currentPageHeight;
+    position += currentPageHeight + 5;
   }
 
-  // 4. 直接输出 blob（文字可复制！）
   return { blob: doc.output('blob'), filename: `${name}.pdf` };
 }
 
