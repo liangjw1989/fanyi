@@ -575,7 +575,7 @@
       renderAll();
     }
 
-    // ==================== 绝对解析版 callProxy ====================
+    // ==================== 最终诊断版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -584,27 +584,50 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
+    // 1. 获取原始文本，绝不丢失数据
     const rawText = await res.text();
-    console.log(">>> 后端原始返回:", rawText);
+    console.log("=== 后端返回的原始内容 ===", rawText);
 
-    // 1. 解析最外层的 JSON
-    const outer = JSON.parse(rawText);
-    if (outer.code !== 0) {
-      console.warn("后端返回错误码:", outer);
-      return "翻译失败，请检查后端配置";
+    // 2. 如果后端返回的是空字符串，直接返回，防止崩
+    if (!rawText) return "后端返回空内容";
+
+    // 3. 尝试解析 JSON
+    let outer;
+    try {
+      outer = JSON.parse(rawText);
+    } catch (e) {
+      // 如果解析失败，说明后端返回的不是 JSON（可能是 HTML 错误页），直接返回原文
+      return rawText; 
     }
 
-    // 2. 解析 `result` 字段里的 JSON 字符串（这里是关键！）
-    const inner = JSON.parse(outer.result);
+    // 4. 无论 code 是不是 0，我们都尝试提取有用的信息
+    if (outer.code !== 0) {
+      // 如果有错误信息，优先返回错误信息
+      if (outer.error) return outer.error;
+      if (outer.message) return outer.message;
+      // 如果没有，直接返回原始 JSON 结构，让你看到它到底长啥样
+      return rawText; 
+    }
 
-    // 3. 提取中文文本
-    if (inner.文本) return inner.文本;  // ✅ 成功提取！ 
-    if (inner.text) return inner.text;  // 兼容格式
+    // 5. 如果是成功的 (code === 0)，提取 result
+    if (outer.result) {
+      // 尝试解析 result 里的 JSON 字符串
+      try {
+        const inner = JSON.parse(outer.result);
+        if (inner.文本) return inner.文本;
+        if (inner.text) return inner.text;
+      } catch (e) {
+        // 如果解析失败，直接返回 result 本身
+        return outer.result;
+      }
+    }
 
-    return outer.result; // 兜底
+    // 6. 兜底：返回原始内容，确保你一定能看到东西
+    return rawText;
+
   } catch (err) {
-    console.error("callProxy 解析出错:", err);
-    return "翻译过程出现解析错误";
+    console.error("callProxy 捕获错误:", err);
+    return `前端 fetch 错误: ${err.message}`;
   }
 }
       // 👇 重点：头部加了 async
