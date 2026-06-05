@@ -575,7 +575,7 @@
       renderAll();
     }
 
-    // ==================== 最终正则提取版 callProxy ====================
+    // ==================== 最终爆破版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -587,28 +587,26 @@ async function callProxy(text, target) {
     const rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 🚀 核心修改：直接使用正则表达式提取 "文本":"内容"
-    // 这个正则能完美匹配： "文本":"你好世界" 这样的结构
-    const regex = /"文本":"([^"]+)/;
-    const match = rawText.match(regex);
+    // 🚀 直接使用字符串分割提取中文，绝不依赖 JSON.parse 的繁琐逻辑
+    // 目标格式： {"code":0,"result":"{\"文本\":\"这里是中文内容...\""}
+    // 步骤1：先找到 "result":" 后面的部分
+    const resultPart = rawText.split('"result":"')[1];
+    if (!resultPart) return rawText; // 如果找不到 result，直接返回原文
 
-    if (match && match[1]) {
-      // ✅ 如果匹配成功，直接返回纯净的中文内容！
-      return match[1]; 
+    // 步骤2：再找到 "文本":" 后面的部分
+    const textPart = resultPart.split('"文本":"')[1];
+    if (!textPart) return rawText; // 如果找不到 文本，直接返回原文
+
+    // 步骤3：提取中文内容（遇到下一个引号 " 就截断）
+    const finalText = textPart.split('"')[0];
+    
+    // 如果提取成功，返回纯净的中文！
+    if (finalText) {
+      return finalText; 
     }
 
-    // 如果正则没匹配到（比如后端格式变了），再尝试用 JSON.parse 兜底
-    try {
-      const outer = JSON.parse(rawText);
-      if (outer.code === 0 && outer.result) {
-        const inner = JSON.parse(outer.result);
-        if (inner.文本) return inner.文本;
-        if (inner.text) return inner.text;
-      }
-      return rawText;
-    } catch (e) {
-      return rawText; // 兜底返回原始内容
-    }
+    // 兜底返回
+    return rawText;
 
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
@@ -664,28 +662,28 @@ async function extractText(file, ext) {
       }
     }
 
-    // ==================== 高清多页版 genPDF ====================
+    // ==================== 绝对多页版 genPDF ====================
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
   
-  // 1. 创建临时 div 包裹文字（指定宋体，中文最美观）
+  // 1. 创建临时 div 包裹文字
   const tempDiv = document.createElement('div');
   tempDiv.style.width = '170mm';
   tempDiv.style.padding = '15mm';
   tempDiv.style.fontSize = '14px';
-  tempDiv.style.fontFamily = 'SimSun, serif'; // 必须指定中文字体
+  tempDiv.style.fontFamily = 'SimSun, serif';
   tempDiv.style.lineHeight = '1.8';
   tempDiv.style.color = '#000';
   tempDiv.innerText = text || '暂无内容';
 
   document.body.appendChild(tempDiv);
   
-  // 2. 使用 html2canvas 渲染整张长图（scale: 2 保证高清）
+  // 2. 用 html2canvas 渲染长图
   const canvas = await html2canvas(tempDiv, { scale: 2 });
   document.body.removeChild(tempDiv);
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
 
-  // 3. 准备 PDF
+  // 3. 计算 PDF 尺寸
   const doc = new jsPDF('p', 'mm', 'a4');
   const pdfWidth = doc.internal.pageSize.getWidth();
   const pdfHeight = doc.internal.pageSize.getHeight();
@@ -693,30 +691,43 @@ async function genPDF(text, name) {
   const contentWidth = pdfWidth - 2 * margin;
   const contentHeight = pdfHeight - 2 * margin;
 
-  // 4. 计算图片在 PDF 里的比例
+  // 4. 计算图片比例和高度
   const ratio = Math.min(contentWidth / canvas.width, contentHeight / canvas.height);
   const imgWidth = canvas.width * ratio;
   const imgHeight = canvas.height * ratio;
 
-  // 5. 分页循环（确保每一页都有内容）
+  // 5. 强制分页逻辑 (绝对的、不会出错的分页)
+  const totalPages = Math.ceil(imgHeight / contentHeight);
   let heightLeft = imgHeight;
-  let position = 0;
 
-  while (heightLeft > 0) {
-    if (position > 0) doc.addPage();
-    const currentHeight = Math.min(heightLeft, contentHeight);
+  for (let pageNum = 0; pageNum < totalPages; pageNum++) {
+    // 如果不是第一页，新增一页
+    if (pageNum > 0) {
+      doc.addPage();
+    }
+
+    // 计算当前页的高度
+    const currentPageHeight = Math.min(heightLeft, contentHeight);
     
+    // 裁剪 canvas 生成当前页图片
     const pageCanvas = document.createElement('canvas');
     pageCanvas.width = canvas.width;
-    pageCanvas.height = currentHeight / ratio;
+    pageCanvas.height = currentPageHeight / ratio;
     const ctx = pageCanvas.getContext('2d');
-    ctx.drawImage(canvas, 0, position / ratio, canvas.width, pageCanvas.height, 0, 0, canvas.width, pageCanvas.height);
     
-    const pageImgData = pageCanvas.toDataURL('image/jpeg', 1.0);
-    doc.addImage(pageImgData, 'JPEG', margin, margin, contentWidth, currentHeight);
+    // 从源图片中裁剪出对应区域的像素
+    ctx.drawImage(
+      canvas, 
+      0, (pageNum * contentHeight) / ratio, // 源图片裁剪起始 Y 坐标
+      canvas.width, pageCanvas.height,      // 源图片裁剪尺寸
+      0, 0,                                 // 目标画布起始坐标
+      canvas.width, pageCanvas.height       // 目标画布尺寸
+    );
 
-    heightLeft -= currentHeight;
-    position += currentHeight;
+    const pageImgData = pageCanvas.toDataURL('image/jpeg', 1.0);
+    doc.addImage(pageImgData, 'JPEG', margin, margin, contentWidth, currentPageHeight);
+
+    heightLeft -= currentPageHeight;
   }
 
   return { blob: doc.output('blob'), filename: `${name}.pdf` };
