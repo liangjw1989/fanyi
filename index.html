@@ -575,7 +575,7 @@
       renderAll();
     }
 
-    // ==================== 终极调试版 callProxy ====================
+    // ==================== 完美解析版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -584,15 +584,10 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 获取原始内容，不进行任何解析
     const rawText = await res.text();
-    
-    // 2. 弹窗强制显示后端返回的原始内容
-    alert(`🔍 后端返回的原始 rawText (无任何处理):\n\n${rawText}`);
-    
     console.log("=== 后端返回的原始内容 ===", rawText);
 
-    // 3. 尝试解析，如果解析失败，直接返回原始内容
+    // 1. 解析最外层的 JSON
     let data;
     try {
       data = JSON.parse(rawText);
@@ -600,14 +595,32 @@ async function callProxy(text, target) {
       return rawText; // 如果不是 JSON，直接返回原文
     }
 
-    // 4. 如果 data 是空对象 {} 或缺少 result
-    if (data.result === undefined) {
-      alert(`⚠️ 后端返回的 JSON 缺少 result 字段，原始内容为:\n\n${rawText}`);
-      return ""; 
+    // 2. 检查 code 字段
+    if (data.code !== 0) {
+      console.warn("后端返回错误:", data.error || data.message);
+      return "";
     }
 
-    // 5. 返回 result
-    return data.result || ""; 
+    // 3. 获取 result 字段（它是一个 JSON 字符串，如 "{\"文本\":\"你好...\"}"）
+    let finalResult = data.result || "";
+
+    // 4. 尝试解析 result 里的嵌套 JSON，提取 "文本" 字段
+    try {
+      // 只有当 finalResult 看起来像是 JSON 字符串时才解析
+      if (typeof finalResult === 'string' && finalResult.trim().startsWith('{')) {
+        const parsedInner = JSON.parse(finalResult);
+        if (parsedInner.文本) {
+          return parsedInner.文本; // ✅ 提取成功！
+        } else if (parsedInner.text) {
+          return parsedInner.text; // 兼容其他格式
+        }
+      }
+    } catch (e) {
+      // 如果解析失败，说明 finalResult 本身就是纯文本
+    }
+
+    // 5. 返回最终提取到的内容（防御性返回）
+    return finalResult || "";
 
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
