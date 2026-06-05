@@ -575,7 +575,7 @@
       renderAll();
     }
 
-    // ==================== 终极必杀版 callProxy ====================
+    // ==================== 万无一失版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -587,21 +587,32 @@ async function callProxy(text, target) {
     const rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 🚀 核心修改：用 JSON.parse 嵌套解析，绝对提取中文
-    // 第1层：解析最外层的 JSON，拿到 result
+    // 🚀 第一层：解析最外层的 JSON
     const outer = JSON.parse(rawText);
-    if (outer.code !== 0) return rawText;
+    
+    // 如果后端返回了错误码，直接返回错误信息
+    if (outer.code !== 0) {
+      return outer.error || outer.message || `错误码: ${outer.code}`;
+    }
 
-    // 第2层：解析 result 里的 JSON 字符串，拿到 "文本"
+    // 🚀 第二层：解析 `result` 里面的字符串（这里是关键）
+    // 你的后端返回的是: `{"code":0, "result":"{\"文本\":\"你好...\"}"}`
     const inner = JSON.parse(outer.result);
-    // 返回纯中文！
-    if (inner.文本) return inner.文本;
-    if (inner.text) return inner.text;
 
+    // ✅ 第三层：提取中文
+    if (inner.文本) {
+      return inner.文本; // 成功提取！
+    }
+    if (inner.text) {
+      return inner.text; // 兼容格式
+    }
+
+    // 兜底：如果解析失败，返回原始内容
     return rawText;
+
   } catch (err) {
     console.error("callProxy 解析出错:", err);
-    return "翻译失败，请检查网络";
+    return "翻译解析失败";
   }
 }
       // 👇 重点：头部加了 async
@@ -653,23 +664,23 @@ async function extractText(file, ext) {
       }
     }
 
-    // ==================== 高清分页版 genPDF ====================
+    // ==================== 完美分页版 genPDF ====================
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
   
-  // 1. 创建临时 div 包裹中文
+  // 1. 创建临时 div 包裹文字
   const tempDiv = document.createElement('div');
   tempDiv.style.width = '170mm';
   tempDiv.style.padding = '15mm';
   tempDiv.style.fontSize = '14px';
-  tempDiv.style.fontFamily = 'SimSun, serif'; // 宋体，中文最美观
+  tempDiv.style.fontFamily = 'SimSun, serif'; // 必须指定中文字体
   tempDiv.style.lineHeight = '1.8';
   tempDiv.style.color = '#000';
   tempDiv.innerText = text || '暂无内容';
 
   document.body.appendChild(tempDiv);
   
-  // 2. 用 html2canvas 渲染长图，确保清晰
+  // 2. 使用 html2canvas 渲染长图（scale: 2 保证高清）
   const canvas = await html2canvas(tempDiv, { scale: 2 });
   document.body.removeChild(tempDiv);
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
@@ -687,35 +698,42 @@ async function genPDF(text, name) {
   const imgWidth = canvas.width * ratio;
   const imgHeight = canvas.height * ratio;
 
-  // 5. 计算总页数 (核心解决分页逻辑)
-  const totalPages = Math.ceil(imgHeight / contentHeight);
+  // 5. 分页循环（确保每一页都有内容）
   let heightLeft = imgHeight;
+  let position = 0;
 
-  for (let i = 0; i < totalPages; i++) {
-    if (i > 0) doc.addPage(); // 第一页后都新增一页
+  while (heightLeft > 0) {
+    // 如果不是第一页，添加新页
+    if (position > 0) {
+      doc.addPage();
+    }
 
-    // 计算当前页的高度 (处理最后一页可能不足一页的情况)
-    const currentPageHeight = Math.min(heightLeft, contentHeight);
+    // 计算当前页能显示的高度
+    const currentHeight = Math.min(heightLeft, contentHeight);
     
     // 裁剪 canvas 生成当前页的图片
     const pageCanvas = document.createElement('canvas');
     pageCanvas.width = canvas.width;
-    // 这里要把 mm 单位转回 canvas 的像素单位
-    pageCanvas.height = currentPageHeight / ratio;
+    pageCanvas.height = currentHeight / ratio;
     const ctx = pageCanvas.getContext('2d');
-    // 从上往下裁剪，无需复杂的 position 计算
+    
+    // 从整张图中剪裁出当前页需要的部分
     ctx.drawImage(
       canvas, 
-      0, i * (contentHeight / ratio), // 源图片 Y 轴偏移
+      0, position / ratio, 
       canvas.width, pageCanvas.height, 
       0, 0, 
       canvas.width, pageCanvas.height
     );
 
     const pageImgData = pageCanvas.toDataURL('image/jpeg', 1.0);
-    doc.addImage(pageImgData, 'JPEG', margin, margin, contentWidth, currentPageHeight);
 
-    heightLeft -= currentPageHeight;
+    // 将图片添加到 PDF 当前页
+    doc.addImage(pageImgData, 'JPEG', margin, margin, contentWidth, currentHeight);
+
+    // 更新剩余高度和已处理位置
+    heightLeft -= currentHeight;
+    position += currentHeight;
   }
 
   return { blob: doc.output('blob'), filename: `${name}.pdf` };
