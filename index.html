@@ -585,40 +585,19 @@ async function callProxy(text, target) {
     });
 
     const rawText = await res.text();
-    console.log("=== 后端返回的原始内容 ===", rawText);
-
-    // 🚀 核心修改：直接使用正则表达式提取 "文本" 字段的内容
-    // 匹配格式： "文本":"内容,"
-    const regex = /"文本":"([^"]+)"/;
-    const match = rawText.match(regex);
-
-    if (match && match[1]) {
-      // 如果匹配成功，直接返回提取到的中文内容
-      console.log("✅ 成功提取翻译内容:", match[1]);
-      return match[1]; 
+    // 1. 解析最外层的 JSON
+    const outer = JSON.parse(rawText);
+    if (outer.code === 0 && outer.result) {
+      // 2. 解析内层嵌套的 JSON 字符串（"{\"文本\":...}"）
+      const inner = JSON.parse(outer.result);
+      if (inner.文本) return inner.文本;  // 提取中文
+      if (inner.text) return inner.text;  // 兼容
+      return outer.result; // 兜底
     }
-
-    // 如果正则提取失败，尝试用 JSON.parse 兜底（兼容其他可能的结构）
-    try {
-      const data = JSON.parse(rawText);
-      if (data.result) {
-        // 如果 result 是字符串，尝试再次解析它
-        if (typeof data.result === 'string' && data.result.trim().startsWith('{')) {
-          const inner = JSON.parse(data.result);
-          if (inner.文本) return inner.文本;
-        }
-        return data.result;
-      }
-    } catch (e) {
-      // 解析失败，忽略
-    }
-
-    // 如果上面都失败了，直接返回 rawText 本身（至少能显示原始数据）
-    return rawText || "";
-
-  } catch (err) {
-    console.error("callProxy 捕获错误:", err);
     return "";
+  } catch (e) {
+    console.error(e);
+    return rawText; // 万不得已返回原始内容
   }
 }
       // 👇 重点：头部加了 async
@@ -673,37 +652,65 @@ async function extractText(file, ext) {
     async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
   
-  // 1. 创建一个临时的 div 来包裹文字
+  // 1. 创建一个临时的 div 来包裹文字（设置好样式：宽页边距+宋体）
   const tempDiv = document.createElement('div');
-  // 设置宽度和样式，确保文本换行
-  tempDiv.style.width = '530px'; 
-  tempDiv.style.padding = '20px';
+  tempDiv.style.width = '170mm'; // 适配 A4 宽度
+  tempDiv.style.padding = '15mm';
   tempDiv.style.fontSize = '14px';
-  tempDiv.style.fontFamily = 'sans-serif';
-  tempDiv.style.lineHeight = '1.6';
+  tempDiv.style.fontFamily = 'SimSun, serif'; // 使用宋体，中文更美观
+  tempDiv.style.lineHeight = '1.8'; // 增加行间距，更易阅读
   tempDiv.style.color = '#000';
-  // ✅ 如果 text 为空，显示友好的提示
-  // 这里把 text 的内容原样打印出来，不管是空字符串，还是 JSON 字符串
-tempDiv.innerText = text ? text : '(空)';
+  tempDiv.innerText = text || '暂无内容';
 
-  // 2. 把 div 添加到 body 并隐藏（用于计算）
   document.body.appendChild(tempDiv);
   
-  // 3. 使用 html2canvas 把 div 渲染成图片
+  // 2. 使用 html2canvas 把 div 渲染成一张完整的长图
   const canvas = await html2canvas(tempDiv);
-  
-  // 4. 移除临时 div
   document.body.removeChild(tempDiv);
 
-  // 5. 将 canvas 转为图片数据
+  // 3. 将 canvas 转为图片数据
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
 
-  // 6. 生成 PDF（A4 纸）
+  // 4. 设置 PDF 格式（A4）
   const doc = new jsPDF('p', 'mm', 'a4');
   const pdfWidth = doc.internal.pageSize.getWidth();
-  const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+  const pdfHeight = doc.internal.pageSize.getHeight();
+  
+  // 5. 计算图片的宽高比
+  const imgWidth = pdfWidth - 20; // 左右留白 10mm
+  const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-  doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+  // 6. 处理分页逻辑：如果图片高度超过一页，自动切割并分页
+  const pageHeight = pdfHeight - 20; // 减去上下边距
+  if (imgHeight > pageHeight) {
+    let yOffset = 0;
+    while (yOffset < canvas.height) {
+      // 如果超过一页，添加新页
+      if (yOffset > 0) doc.addPage();
+      
+      // 计算当前页能容纳的像素高度
+      const pageHeightPx = (canvas.height * pageHeight) / imgHeight;
+      
+      // 切割 canvas
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = Math.min(pageHeightPx, canvas.height - yOffset);
+      const ctx = pageCanvas.getContext('2d');
+      ctx.drawImage(canvas, 0, yOffset, canvas.width, pageCanvas.height, 0, 0, canvas.width, pageCanvas.height);
+      
+      // 将切割出来的页面图片转为 dataURL
+      const pageData = pageCanvas.toDataURL('image/jpeg', 1.0);
+      
+      // 添加到 PDF
+      doc.addImage(pageData, 'JPEG', 10, 10, imgWidth, (pageCanvas.height * imgWidth) / canvas.width);
+      
+      // 偏移量增加
+      yOffset += pageHeightPx;
+    }
+  } else {
+    // 如果只有一页，直接添加
+    doc.addImage(imgData, 'JPEG', 10, 10, imgWidth, imgHeight);
+  }
 
   return { blob: doc.output('blob'), filename: `${name}.pdf` };
 }
