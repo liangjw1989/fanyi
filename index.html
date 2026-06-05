@@ -1,722 +1,814 @@
 ﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>灵译 · 专业级翻译与文档转换工作站</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body {
-            font-family: 'Inter', sans-serif;
-            background: linear-gradient(145deg, #f0f4fd 0%, #e6ebf7 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            color: #1e293b;
-            padding: 1rem;
-        }
-        .app-wrapper {
-            width: 100%;
-            max-width: 1200px;
-            display: flex;
-            flex-direction: column;
-            gap: 1.5rem;
-        }
-        .card {
-            background: rgba(255, 255, 255, 0.75);
-            backdrop-filter: blur(20px);
-            border-radius: 2rem;
-            padding: 1.5rem;
-            box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.12);
-            border: 1px solid rgba(255, 255, 255, 0.8);
-        }
-        .top-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 1rem;
-        }
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-        .brand-icon {
-            background: linear-gradient(135deg, #4f6ef7, #7b5cff);
-            width: 48px;
-            height: 48px;
-            border-radius: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 24px;
-            box-shadow: 0 10px 20px -5px rgba(79, 110, 247, 0.4);
-        }
-        .brand-text h1 {
-            font-weight: 700;
-            font-size: 1.8rem;
-            background: linear-gradient(to right, #1e293b, #334155);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .brand-text span {
-            font-size: 0.8rem;
-            color: #64748b;
-            font-weight: 500;
-        }
-        .qr-section {
-            display: flex;
-            align-items: center;
-            justify-content: center;   /* ✅ 修正1：使二维码居中 */
-            gap: 0.8rem;
-            cursor: pointer;
-            transition: 0.2s;
-        }
-        .qr-section:hover { transform: scale(1.05); }
-        .qr-code-wrapper {
-            width: 40px;
-            height: 40px;
-            border-radius: 12px;
-            padding: 2px;
-            background: linear-gradient(135deg, #4f6ef7, #a855f7, #ec4899);
-            box-shadow: 0 4px 12px rgba(79, 110, 247, 0.3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .qr-code-inner {
-            width: 36px;
-            height: 36px;
-            border-radius: 10px;
-            background: white;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .btn {
-            padding: 0.5rem 1.2rem;
-            border-radius: 2rem;
-            font-weight: 600;
-            border: none;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            transition: 0.2s;
-            font-size: 0.85rem;
-        }
-        .btn-primary { background: #4f6ef7; color: white; }
-        .btn-primary:hover:not(:disabled) { background: #3b54d4; }
-        .btn-outline { background: white; border: 1.5px solid #e2e8f0; color: #334155; }
-        .btn-outline:hover { background: #f8fafc; border-color: #4f6ef7; }
-        .btn-danger { background: #ef4444; color: white; }
-        .btn-sm { padding: 0.3rem 0.8rem; font-size: 0.75rem; }
-        .tabs {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
-        }
-        .tab-btn {
-            background: white;
-            border: 1.5px solid #e2e8f0;
-            color: #64748b;
-            padding: 0.5rem 1.5rem;
-            border-radius: 2rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: 0.2s;
-        }
-        .tab-btn.active {
-            background: #4f6ef7;
-            color: white;
-            border-color: #4f6ef7;
-        }
-        .upload-area {
-            border: 2px dashed #cbd5e1;
-            border-radius: 1.5rem;
-            padding: 2rem;
-            text-align: center;
-            cursor: pointer;
-            background: rgba(248, 250, 252, 0.7);
-            margin: 1rem 0;
-            transition: 0.2s;
-        }
-        .upload-area i {
-            font-size: 2rem;
-            color: #4f6ef7;
-            margin-bottom: 0.5rem;
-        }
-        .upload-area.drag-over {
-            border-color: #4f6ef7;
-            background: #eef2ff;
-        }
-        .upload-hint { font-size: 0.8rem; color: #64748b; }
-        .file-item {
-            background: white;
-            border-radius: 1rem;
-            padding: 0.8rem;
-            margin-bottom: 0.6rem;
-            display: flex;
-            align-items: center;
-            gap: 0.8rem;
-            border: 1px solid #e2e8f0;
-            flex-wrap: wrap;
-        }
-        .file-icon { font-size: 1.5rem; color: #4f6ef7; }
-        .file-info { flex: 1; min-width: 140px; }
-        .file-name { font-weight: 600; font-size: 0.9rem; }
-        .progress-bar {
-            width: 80px;
-            height: 5px;
-            background: #e2e8f0;
-            border-radius: 10px;
-            overflow: hidden;
-        }
-        .progress-fill {
-            height: 100%;
-            background: #4f6ef7;
-            width: 0%;
-            transition: 0.3s;
-        }
-        .file-actions {
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-            flex-wrap: wrap;
-        }
-        /* 修复下拉选择框箭头 */
-        select {
-            padding: 0.3rem 0.6rem;
-            border-radius: 0.6rem;
-            border: 1px solid #e2e8f0;
-            font-size: 0.75rem;
-            background: white;
-            appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23475669' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 0.4rem center;
-            background-size: 14px 14px;
-            padding-right: 1.8rem;
-            cursor: pointer;
-        }
-        select:focus {
-            outline: none;
-            border-color: #4f6ef7;
-            box-shadow: 0 0 0 3px rgba(79, 110, 247, 0.2);
-        }
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.3);
-            backdrop-filter: blur(4px);
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-        }
-        .modal-box {
-            background: white;
-            border-radius: 1.5rem;
-            padding: 2rem;
-            max-width: 400px;
-            width: 90%;
-            text-align: center;
-            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.2);
-        }
-        .modal-box h3 { margin-bottom: 1rem; color: #1e293b; }
-        .modal-box p { font-size: 0.9rem; color: #64748b; margin-bottom: 1.5rem; }
-        .modal-box .btn-primary { width: 100%; justify-content: center; }
-        
-        /* 面板隐藏/显示 */
-        .panel { display: none; }
-        .panel.active { display: block; }
-        
-        @media (max-width: 600px) {
-            .brand-text h1 { font-size: 1.4rem; }
-            .file-item { flex-direction: column; align-items: stretch; }
-            .file-actions { justify-content: flex-start; }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+  <title>灵译 · 翻译与转换神器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(145deg, #f0f4fd 0%, #e6ebf7 100%);
+      min-height: 100vh; display: flex; justify-content: center;
+      color: #1e293b; padding: 1rem;
+    }
+    .app-wrapper { width:100%; max-width:1200px; display:flex; flex-direction:column; gap:1.5rem; }
+    .card {
+      background: rgba(255,255,255,0.75); backdrop-filter: blur(20px);
+      border-radius: 2rem; padding: 1.5rem;
+      box-shadow: 0 20px 40px -12px rgba(0,0,0,0.12);
+      border: 1px solid rgba(255,255,255,0.8);
+    }
+    .top-bar { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; }
+    .brand { display:flex; align-items:center; gap:0.75rem; }
+    .brand-icon {
+      background: linear-gradient(135deg, #4f6ef7, #7b5cff);
+      width:48px; height:48px; border-radius:18px;
+      display:flex; align-items:center; justify-content:center;
+      color:white; font-size:24px; box-shadow:0 10px 20px -5px rgba(79,110,247,0.4);
+    }
+    .brand-text h1 {
+      font-weight:700; font-size:1.8rem;
+      background: linear-gradient(to right, #1e293b, #334155);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .brand-text span { font-size:0.8rem; color:#64748b; font-weight:500; }
+
+    .qr-section { display:flex; align-items:center; gap:0.8rem; cursor:pointer; transition:0.2s; }
+    .qr-section:hover { transform:scale(1.05); }
+    .qr-code-wrapper {
+      width:40px; height:40px; border-radius:12px; padding:2px;
+      background: linear-gradient(135deg, #4f6ef7, #a855f7, #ec4899);
+      box-shadow:0 4px 12px rgba(79,110,247,0.3);
+      display:flex; align-items:center; justify-content:center;
+    }
+    .qr-code-inner { width:36px; height:36px; border-radius:10px; background:white; overflow:hidden; }
+
+    .btn {
+      padding:0.5rem 1.2rem; border-radius:2rem; font-weight:600; border:none;
+      cursor:pointer; display:inline-flex; align-items:center; gap:0.5rem;
+      transition:0.2s; font-size:0.85rem;
+    }
+    .btn-primary { background:#4f6ef7; color:white; }
+    .btn-primary:hover:not(:disabled) { background:#3b54d4; }
+    .btn-outline { background:white; border:1.5px solid #e2e8f0; color:#334155; }
+    .btn-outline:hover { background:#f8fafc; border-color:#4f6ef7; }
+    .btn-danger { background:#ef4444; color:white; }
+    .btn-sm { padding:0.3rem 0.8rem; font-size:0.75rem; }
+
+    .tabs { display:flex; gap:0.5rem; margin-bottom:1.5rem; flex-wrap:wrap; }
+    .tab-btn {
+      background:white; border:1.5px solid #e2e8f0; color:#64748b;
+      padding:0.5rem 1.5rem; border-radius:2rem; font-weight:600;
+      cursor:pointer; transition:0.2s;
+    }
+    .tab-btn.active { background:#4f6ef7; color:white; border-color:#4f6ef7; }
+
+    .upload-area {
+      border:2px dashed #cbd5e1; border-radius:1.5rem; padding:2rem;
+      text-align:center; cursor:pointer; background:rgba(248,250,252,0.7);
+      margin:1rem 0; transition:0.2s;
+    }
+    .upload-area i { font-size:2rem; color:#4f6ef7; margin-bottom:0.5rem; }
+    .upload-area.drag-over { border-color:#4f6ef7; background:#eef2ff; }
+    .upload-hint { font-size:0.8rem; color:#64748b; }
+
+    .file-item {
+      background: white; border-radius:1rem; padding:0.8rem;
+      margin-bottom:0.6rem; display:flex; align-items:center; gap:0.8rem;
+      border:1px solid #e2e8f0; flex-wrap:wrap;
+    }
+    .file-icon { font-size:1.5rem; color:#4f6ef7; }
+    .file-info { flex:1; min-width:140px; }
+    .file-name { font-weight:600; font-size:0.9rem; }
+    .progress-bar { width:80px; height:5px; background:#e2e8f0; border-radius:10px; overflow:hidden; }
+    .progress-fill { height:100%; background:#4f6ef7; width:0%; transition:0.3s; }
+    .file-actions { display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; }
+    select {
+    padding: 0.3rem 0.6rem;
+    border-radius: 0.6rem;
+    border: 1px solid #e2e8f0;
+    font-size: 0.75rem;
+    background: white;
+    appearance: none;
+    /* 这段是修正后的 SVG 图标路径 */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23475669' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.4rem center;
+    background-size: 14px;
+    padding-right: 1.4rem;
+}
+
+    .modal {
+      display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+      background:rgba(0,0,0,0.3); backdrop-filter:blur(4px);
+      align-items:center; justify-content:center; z-index:1000;
+    }
+    .modal.active { display:flex; }
+    .modal-content {
+      background:white; border-radius:1.5rem; padding:1.5rem; max-width:600px;
+      width:90%; max-height:80vh; overflow-y:auto;
+      box-shadow:0 30px 50px rgba(0,0,0,0.3);
+      text-align: left;
+    }
+    .close-modal { float:right; cursor:pointer; font-size:1.4rem; color:#94a3b8; }
+    .form-group { margin-bottom:1rem; }
+    .form-group label { display:block; font-size:0.8rem; font-weight:600; margin-bottom:0.3rem; }
+    .form-group input {
+      width:100%; padding:0.6rem 1rem; border-radius:0.8rem; border:1px solid #e2e8f0;
+    }
+    .record-item {
+      background:#f8fafc; border-radius:0.8rem; padding:0.7rem; margin-bottom:0.5rem;
+      border:1px solid #e2e8f0; font-size:0.8rem;
+    }
+    .toast-notification {
+      position:fixed; bottom:2rem; right:2rem; background:#1e293b; color:white;
+      padding:0.8rem 1.5rem; border-radius:2rem; font-weight:500;
+      box-shadow:0 15px 30px rgba(0,0,0,0.3); transform:translateY(100px);
+      opacity:0; transition:0.3s; z-index:999;
+    }
+    .toast-notification.show { transform:translateY(0); opacity:1; }
+
+    .qr-large-container { display:flex; flex-direction:column; align-items:center; gap:1rem; }
+    .qr-large-wrapper {
+      background: linear-gradient(135deg, #4f6ef7, #a855f7, #ec4899);
+      padding:6px; border-radius:20px; box-shadow:0 10px 30px rgba(79,110,247,0.4);
+    }
+    .qr-large-inner { background:white; border-radius:16px; padding:12px; }
+
+    .footer-hint {
+      text-align: center; font-size:0.75rem; color:#64748b;
+      background: rgba(255,255,255,0.6); padding:0.6rem; border-radius:1.5rem;
+      backdrop-filter: blur(10px); margin-top:0.5rem;
+    }
+  </style>
 </head>
 <body>
-
 <div class="app-wrapper">
-    
-    <!-- 顶部导航区 -->
-    <div class="card top-bar">
-        <div class="brand">
-            <div class="brand-icon"><i class="fas fa-language"></i></div>
-            <div class="brand-text">
-                <h1>灵译 · LingYi</h1>
-                <span>多格式文档翻译 · 智能排版 · PDF转换</span>
-            </div>
-        </div>
-        <div class="qr-section" onclick="alert('扫码体验移动端翻译')">
-            <div class="qr-code-wrapper">
-                <div class="qr-code-inner" id="qrCodeContainer"></div>
-            </div>
-            <span style="font-size:0.8rem; color:#64748b;">扫码体验</span>
-        </div>
+  <!-- 顶部 -->
+  <div class="card top-bar">
+    <div class="brand">
+      <div class="brand-icon"><i class="fas fa-language"></i></div>
+      <div class="brand-text">
+        <h1>灵译</h1>
+        <span>文档翻译与格式转换神器</span>
+      </div>
     </div>
-    
-    <!-- 主操作区 -->
-    <div class="card">
-        <!-- Tabs 标签栏 -->
-        <div class="tabs">
-            <button class="tab-btn active" data-tab="translate">📄 翻译文档</button>
-            <button class="tab-btn" data-tab="convert">🔄 格式转换</button>
-            <button class="tab-btn" data-tab="history">🕒 历史记录</button>
-            <button class="tab-btn" data-tab="settings">⚙️ 设置</button>
-        </div>
-        
-        <!-- =========== 翻译文档面板 =========== -->
-        <div id="translatePanel" class="panel active">
-            <div class="upload-area" id="dropZone">
-                <i class="fas fa-cloud-upload-alt"></i>
-                <p><strong>点击上传 或 拖拽文件到此处</strong></p>
-                <p class="upload-hint">支持 PDF · Word (docx) · TXT · 图片 (jpg/png)</p>
-                <input type="file" id="fileInput" style="display:none;" accept=".pdf,.docx,.txt,.jpg,.jpeg,.png">
-            </div>
-            <div id="fileListContainer" style="margin-top:1rem; min-height:80px;">
-                <div style="text-align:center; color:#94a3b8; padding:2rem;">
-                    <i class="fas fa-upload" style="font-size:1.5rem; opacity:0.5;"></i>
-                    <p style="margin-top:0.5rem; font-size:0.9rem;">还没有上传文件，请开始翻译之旅。</p>
-                </div>
-            </div>
-        </div>
-        
-        <!-- =========== 格式转换面板 =========== -->
-        <div id="convertPanel" class="panel">
-            <div style="padding:1.5rem 0;">
-                <h3 style="margin-bottom:1rem;">🎯 格式转换工具</h3>
-                <p style="color:#64748b; margin-bottom:1.5rem;">上传文档，选择目标格式，一键转换。本功能基于云端技术，高效精准。</p>
-                <div class="upload-area" id="convertDropZone" style="padding:1.5rem;">
-                    <i class="fas fa-file-export"></i>
-                    <p><strong>点击上传需要转换的文件</strong></p>
-                    <p class="upload-hint">支持 PDF, Word, TXT</p>
-                    <input type="file" id="convertFileInput" style="display:none;" accept=".pdf,.docx,.txt">
-                </div>
-                <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center; margin-top:1rem;">
-                    <label style="font-weight:600; color:#334155;">输出格式：</label>
-                    <select id="convertTargetFormat" style="padding:0.5rem 1rem; border-radius:0.6rem; border:1px solid #e2e8f0;">
-                        <option value="pdf">PDF 文档</option>
-                        <option value="docx">Word 文档</option>
-                        <option value="txt">纯文本 (TXT)</option>
-                    </select>
-                    <button class="btn btn-primary" onclick="window.runConversion()"><i class="fas fa-sync-alt"></i> 开始转换</button>
-                </div>
-                <div id="convertProgress" style="margin-top:1.5rem; display:none;">
-                    <p style="font-size:0.85rem; color:#64748b;">正在转换中...</p>
-                    <div class="progress-bar"><div class="progress-fill" style="width:60%;"></div></div>
-                </div>
-                <div id="convertResult" style="margin-top:1.5rem; display:none; padding:1rem; background:#f8fafc; border-radius:1rem;">
-                    <p style="color:#22c55e;"><i class="fas fa-check-circle"></i> 转换完成！点击下方按钮下载。</p>
-                    <button class="btn btn-primary btn-sm" style="margin-top:0.5rem;" onclick="window.downloadConvertedFile()"><i class="fas fa-download"></i> 下载转换后文件</button>
-                </div>
-            </div>
-        </div>
-        
-        <!-- =========== 历史记录面板 =========== -->
-        <div id="historyPanel" class="panel">
-            <div style="text-align:center; padding:3rem 1rem; color:#94a3b8;">
-                <i class="fas fa-clock" style="font-size:3rem; margin-bottom:1rem;"></i>
-                <p style="font-weight:500; font-size:1rem;">暂无翻译历史记录。</p>
-                <p style="font-size:0.85rem;">开始翻译后，这里将显示您的操作历史。</p>
-            </div>
-        </div>
-        
-        <!-- =========== 设置面板 =========== -->
-        <div id="settingsPanel" class="panel">
-            <div style="padding:1.5rem 0;">
-                <h3 style="margin-bottom:1rem;">⚙️ 应用设置</h3>
-                <div style="border-bottom:1px solid #e2e8f0; padding:0.8rem 0; display:flex; justify-content:space-between; align-items:center;">
-                    <div><strong>默认目标语言</strong><br><span style="font-size:0.8rem; color:#64748b;">设置翻译输出的默认语言。</span></div>
-                    <select><option>中文</option><option>英文</option><option>日文</option></select>
-                </div>
-                <div style="border-bottom:1px solid #e2e8f0; padding:0.8rem 0; display:flex; justify-content:space-between; align-items:center;">
-                    <div><strong>PDF 导出质量</strong><br><span style="font-size:0.8rem; color:#64748b;">选择高清晰度或快速导出。</span></div>
-                    <select><option>高清 (300dpi)</option><option>标准 (150dpi)</option></select>
-                </div>
-                <div style="padding:0.8rem 0; display:flex; justify-content:space-between; align-items:center;">
-                    <div><strong>保留原始格式</strong><br><span style="font-size:0.8rem; color:#64748b;">PDF导出时保留原始版面布局。</span></div>
-                    <input type="checkbox" checked style="width:18px; height:18px;">
-                </div>
-                <div style="padding:1rem 0; text-align:center; margin-top:1rem;">
-                    <button class="btn btn-outline" onclick="showModal('提示', '保存设置成功。')"><i class="fas fa-save"></i> 保存设置</button>
-                </div>
-            </div>
-        </div>
+    <div style="display:flex; align-items:center; gap:1.5rem;">
+      <div style="display:flex; gap:0.5rem; align-items:center;">
+        <span id="loginStatus" style="font-size:0.85rem; color:#475569;"></span>
+        <button class="btn btn-outline btn-sm" id="loginBtn"><i class="fas fa-user"></i> 登录</button>
+        <button class="btn btn-outline btn-sm" id="historyBtn" style="display:none;"><i class="fas fa-history"></i> 记录</button>
+        <button class="btn btn-outline btn-sm" id="adminBtn" style="display:none;"><i class="fas fa-crown"></i> 管理</button>
+        <button class="btn btn-outline btn-sm" id="logoutBtn" style="display:none;"><i class="fas fa-sign-out-alt"></i> 退出</button>
+      </div>
+      <div class="qr-section" id="qrSection">
+        <div class="qr-code-wrapper"><div class="qr-code-inner" id="qrContainer"></div></div>
+        <span class="qr-text">扫码打开</span>
+      </div>
     </div>
-    
-    <!-- 底部信息 -->
-    <div style="text-align:center; color:#94a3b8; font-size:0.75rem; padding:1rem;">
-        <p>💡 本软件使用腾讯云翻译API，数据仅在本地处理，保障您的隐私安全。</p>
-        <p>© 2026 灵译 · LingYi · 版本 2.0.2</p>
+  </div>
+
+  <!-- 功能标签 -->
+  <div class="card">
+    <div class="tabs">
+      <button class="tab-btn active" id="translateTabBtn">🌐 文档翻译</button>
+      <button class="tab-btn" id="convertTabBtn">🔄 格式转换</button>
     </div>
+
+    <div id="translateModule">
+      <div class="upload-area" id="translateUpload">
+        <i class="fas fa-cloud-upload-alt"></i>
+        <div class="upload-title">点击上传需翻译的文件</div>
+        <div class="upload-hint">PDF · Word · TXT · 图片</div>
+        <input type="file" id="translateFileInput" hidden multiple accept="*/*">
+      </div>
+      <div id="translateFileList"></div>
+    </div>
+
+    <div id="convertModule" style="display:none;">
+      <div class="upload-area" id="convertUpload">
+        <i class="fas fa-exchange-alt"></i>
+        <div class="upload-title">点击上传需转换格式的文件</div>
+        <div class="upload-hint">支持 PDF · Word · TXT · 图片（转换为其他格式）</div>
+        <input type="file" id="convertFileInput" hidden multiple accept="*/*">
+      </div>
+      <div id="convertFileList"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="font-weight:600; margin-bottom:1rem;"><i class="fas fa-check-circle" style="color:#10b981;"></i> 已完成的文档</div>
+    <div id="completedList"><div style="color:#94a3b8; text-align:center; padding:2rem;">暂无完成的文档</div></div>
+  </div>
+
+  <div class="footer-hint">🔐 登录后使用完整功能</div>
 </div>
 
-<!-- 模态框（错误/提示） -->
-<div class="modal-overlay" id="globalModal">
-    <div class="modal-box">
-        <h3 id="modalTitle">提示</h3>
-        <p id="modalMessage">内容加载中...</p>
-        <button class="btn btn-primary" onclick="document.getElementById('globalModal').style.display='none'">确 定</button>
+<!-- 二维码放大模态框 -->
+<div class="modal" id="qrZoomModal">
+  <div class="modal-content" style="max-width:350px;">
+    <span class="close-modal" id="closeQrZoom">&times;</span>
+    <div class="qr-large-container">
+      <div class="qr-large-wrapper"><div class="qr-large-inner" id="qrLargeContainer"></div></div>
+      <h3 style="font-weight:700; font-size:1.3rem; background:linear-gradient(135deg, #4f6ef7, #7b5cff); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">灵译</h3>
+      <p style="font-size:0.8rem; color:#64748b;">扫描二维码打开应用</p>
     </div>
+  </div>
 </div>
+
+<!-- 登录模态框 -->
+<div class="modal" id="loginModal">
+  <div class="modal-content">
+    <span class="close-modal" id="closeLoginModal">&times;</span>
+    <h3 style="margin-bottom:1rem; text-align:center;"><i class="fas fa-sign-in-alt"></i> 账号登录</h3>
+    <div class="form-group"><label>账号</label><input type="text" id="loginUsername" placeholder="输入账号"></div>
+    <div class="form-group"><label>密码</label><input type="password" id="loginPassword" placeholder="输入密码"></div>
+    <button class="btn btn-primary" id="doLoginBtn" style="width:100%;">登录</button>
+    <p style="margin-top:0.8rem; font-size:0.75rem; color:#64748b; text-align:center;">没有账号？输入账号密码后将自动注册并登录。</p>
+  </div>
+</div>
+
+<!-- 历史记录模态框 -->
+<div class="modal" id="historyModal">
+  <div class="modal-content">
+    <span class="close-modal" id="closeHistoryModal">&times;</span>
+    <h3 style="margin-bottom:1rem;"><i class="fas fa-history"></i> 我的使用记录 (30天)</h3>
+    <div id="historyContent" style="max-height:50vh; overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- 管理员模态框 -->
+<div class="modal" id="adminModal">
+  <div class="modal-content" style="max-width:700px;">
+    <span class="close-modal" id="closeAdminModal">&times;</span>
+    <h3 style="margin-bottom:1rem;"><i class="fas fa-crown"></i> 管理员面板</h3>
+    <div id="adminContent" style="max-height:55vh; overflow-y:auto;"></div>
+    <button class="btn btn-danger btn-sm" id="clearAllRecordsBtn" style="margin-top:1rem;">清除所有记录</button>
+  </div>
+</div>
+
+<div class="toast-notification" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
 
 <script>
-    (function() {
-        'use strict';
-        
-        // ---------- 全局状态 ----------
-        let currentFile = null;
-        let fileDataArrayBuffer = null;
-        let translatedResult = '';
-        let convertFileData = null;
-        let convertFileName = '';
-        
-        const dropZone = document.getElementById('dropZone');
-        const fileInput = document.getElementById('fileInput');
-        const fileListContainer = document.getElementById('fileListContainer');
-        const modalOverlay = document.getElementById('globalModal');
-        const modalTitle = document.getElementById('modalTitle');
-        const modalMessage = document.getElementById('modalMessage');
-        
-        // ---------- 面板切换逻辑 (解决"设置点不开") ----------
-        const tabBtns = document.querySelectorAll('.tab-btn');
-        const panels = document.querySelectorAll('.panel');
-        
-        tabBtns.forEach(btn => {
-            btn.addEventListener('click', function() {
-                // 切换按钮激活状态
-                tabBtns.forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                
-                // 切换内容面板
-                const targetPanelId = this.dataset.tab + 'Panel';
-                panels.forEach(p => p.classList.remove('active'));
-                document.getElementById(targetPanelId).classList.add('active');
-            });
-        });
-        
-        // ---------- 辅助函数 ----------
-        function showModal(title, message) {
-            modalTitle.textContent = title;
-            modalMessage.textContent = message;
-            modalOverlay.style.display = 'flex';
+  (() => {
+    // ==================== 配置 ====================
+    // ⚠️ 请将此处替换为你腾讯云函数实际生成的 URL 地址
+    const API_PROXY_URL = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
+
+    // ==================== 全局状态 ====================
+    const state = {
+      translateFiles: [],
+      convertFiles: [],
+      completed: [],
+      currentUser: null,
+      nextId: 1,
+    };
+
+    // DOM 元素
+    const translateUpload = document.getElementById('translateUpload');
+    const translateFileInput = document.getElementById('translateFileInput');
+    const translateFileList = document.getElementById('translateFileList');
+    const convertUpload = document.getElementById('convertUpload');
+    const convertFileInput = document.getElementById('convertFileInput');
+    const convertFileList = document.getElementById('convertFileList');
+    const completedList = document.getElementById('completedList');
+    const loginBtn = document.getElementById('loginBtn');
+    const historyBtn = document.getElementById('historyBtn');
+    const adminBtn = document.getElementById('adminBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const loginStatus = document.getElementById('loginStatus');
+    const translateTabBtn = document.getElementById('translateTabBtn');
+    const convertTabBtn = document.getElementById('convertTabBtn');
+    const translateModule = document.getElementById('translateModule');
+    const convertModule = document.getElementById('convertModule');
+    const toast = document.getElementById('toast');
+    const qrSection = document.getElementById('qrSection');
+    const qrZoomModal = document.getElementById('qrZoomModal');
+    const closeQrZoom = document.getElementById('closeQrZoom');
+    const loginModal = document.getElementById('loginModal');
+    const closeLoginModal = document.getElementById('closeLoginModal');
+    const doLoginBtn = document.getElementById('doLoginBtn');
+    const loginUsername = document.getElementById('loginUsername');
+    const loginPassword = document.getElementById('loginPassword');
+    const historyModal = document.getElementById('historyModal');
+    const closeHistoryModal = document.getElementById('closeHistoryModal');
+    const historyContent = document.getElementById('historyContent');
+    const adminModal = document.getElementById('adminModal');
+    const closeAdminModal = document.getElementById('closeAdminModal');
+    const adminContent = document.getElementById('adminContent');
+    const clearAllRecordsBtn = document.getElementById('clearAllRecordsBtn');
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    // 二维码初始化
+    new QRCode(document.getElementById('qrContainer'), {
+      text: window.location.href, width:36, height:36,
+      colorDark:"#1e293b", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.L
+    });
+    qrSection.addEventListener('click', () => {
+      document.getElementById('qrLargeContainer').innerHTML = '';
+      new QRCode(document.getElementById('qrLargeContainer'), {
+        text: window.location.href, width:200, height:200,
+        colorDark:"#1e293b", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.H
+      });
+      qrZoomModal.classList.add('active');
+    });
+    closeQrZoom.addEventListener('click', () => qrZoomModal.classList.remove('active'));
+    qrZoomModal.addEventListener('click', (e) => { if (e.target === qrZoomModal) qrZoomModal.classList.remove('active'); });
+
+    // 标签切换
+    translateTabBtn.addEventListener('click', () => {
+      translateTabBtn.classList.add('active'); convertTabBtn.classList.remove('active');
+      translateModule.style.display = 'block'; convertModule.style.display = 'none';
+    });
+    convertTabBtn.addEventListener('click', () => {
+      convertTabBtn.classList.add('active'); translateTabBtn.classList.remove('active');
+      translateModule.style.display = 'none'; convertModule.style.display = 'block';
+    });
+
+    // 上传监听
+    translateUpload.addEventListener('click', () => translateFileInput.click());
+    translateFileInput.addEventListener('change', e => { if(e.target.files.length){ addFiles(e.target.files, 'translate'); translateFileInput.value=''; } });
+    convertUpload.addEventListener('click', () => convertFileInput.click());
+    convertFileInput.addEventListener('change', e => { if(e.target.files.length){ addFiles(e.target.files, 'convert'); convertFileInput.value=''; } });
+
+    [translateUpload, convertUpload].forEach(area => {
+      area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('drag-over'); });
+      area.addEventListener('dragleave', () => area.classList.remove('drag-over'));
+      area.addEventListener('drop', e => {
+        e.preventDefault(); area.classList.remove('drag-over');
+        const type = area.id === 'translateUpload' ? 'translate' : 'convert';
+        if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files, type);
+      });
+    });
+
+    // ==================== 用户系统 ====================
+    function loadUsers() { return JSON.parse(localStorage.getItem('lingyi_users') || '{}'); }
+    function saveUsers(users) { localStorage.setItem('lingyi_users', JSON.stringify(users)); }
+    function loadAllRecords() { return JSON.parse(localStorage.getItem('lingyi_records') || '[]'); }
+    function saveAllRecords(records) { localStorage.setItem('lingyi_records', JSON.stringify(records)); }
+    function cleanOldRecords(records) {
+      const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+      return records.filter(r => (Date.now() - r.timestamp) < thirtyDays);
+    }
+    function addRecord(fileObj) {
+      if (!state.currentUser) return;
+      const records = loadAllRecords();
+      records.push({
+        id: Date.now(), username: state.currentUser.username, filename: fileObj.name,
+        targetLang: fileObj.targetLang || 'N/A', outputFormat: fileObj.fmt,
+        timestamp: Date.now(),
+      });
+      saveAllRecords(cleanOldRecords(records));
+    }
+
+    function login(username, password) {
+      if (username === '' && password === 'A123666') {
+        state.currentUser = { username: 'admin', isAdmin: true };
+        updateLoginUI(); showToast('管理员登录成功'); return true;
+      }
+      if (!username.trim()) { showToast('账号不能为空', true); return false; }
+      const users = loadUsers();
+      if (users[username]) {
+        if (users[username].password === password) {
+          state.currentUser = { username, isAdmin: false };
+          updateLoginUI(); showToast(`欢迎回来，${username}`); return true;
+        } else { showToast('密码错误', true); return false; }
+      } else {
+        users[username] = { password }; saveUsers(users);
+        state.currentUser = { username, isAdmin: false };
+        updateLoginUI(); showToast(`账号已创建并登录，${username}`); return true;
+      }
+    }
+
+    function logout() {
+      state.currentUser = null; state.completed = [];
+      updateLoginUI(); renderAll(); showToast('已退出登录');
+    }
+
+    function updateLoginUI() {
+      if (state.currentUser) {
+        loginStatus.textContent = state.currentUser.isAdmin ? '管理员' : state.currentUser.username;
+        loginBtn.style.display = 'none';
+        historyBtn.style.display = 'inline-flex';
+        logoutBtn.style.display = 'inline-flex';
+        adminBtn.style.display = state.currentUser.isAdmin ? 'inline-flex' : 'none';
+      } else {
+        loginStatus.textContent = '';
+        loginBtn.style.display = 'inline-flex';
+        historyBtn.style.display = 'none';
+        logoutBtn.style.display = 'none';
+        adminBtn.style.display = 'none';
+      }
+    }
+
+    loginBtn.addEventListener('click', () => loginModal.classList.add('active'));
+    closeLoginModal.addEventListener('click', () => loginModal.classList.remove('active'));
+    doLoginBtn.addEventListener('click', () => {
+      const u = loginUsername.value.trim(), p = loginPassword.value.trim();
+      if (login(u, p)) { loginModal.classList.remove('active'); loginUsername.value=''; loginPassword.value=''; }
+    });
+    historyBtn.addEventListener('click', () => {
+      const records = cleanOldRecords(loadAllRecords().filter(r => state.currentUser.isAdmin || r.username === state.currentUser.username));
+      historyContent.innerHTML = records.length === 0 ? '<div style="color:#94a3b8;padding:1rem;">暂无使用记录</div>' :
+        records.map(r => `<div class="record-item"><strong>${r.filename}</strong><br><small>${new Date(r.timestamp).toLocaleString()} | 格式: ${r.outputFormat}</small></div>`).join('') +
+        '<p style="font-size:0.7rem;color:#ef4444;margin-top:0.5rem;">⚠️ 记录仅保存30天，请及时下载文件。</p>';
+      historyModal.classList.add('active');
+    });
+    closeHistoryModal.addEventListener('click', () => historyModal.classList.remove('active'));
+    adminBtn.addEventListener('click', () => {
+      const records = cleanOldRecords(loadAllRecords());
+      adminContent.innerHTML = records.length === 0 ? '<div>暂无任何用户记录</div>' :
+        records.map(r => `<div class="record-item"><strong>${r.username}</strong> | ${r.filename}<br><small>${new Date(r.timestamp).toLocaleString()}</small></div>`).join('');
+      adminModal.classList.add('active');
+    });
+    closeAdminModal.addEventListener('click', () => adminModal.classList.remove('active'));
+    clearAllRecordsBtn.addEventListener('click', () => {
+      if (confirm('确定删除所有用户的使用记录吗？')) { localStorage.removeItem('lingyi_records'); showToast('已清除所有记录'); adminModal.classList.remove('active'); }
+    });
+    logoutBtn.addEventListener('click', logout);
+
+    window.addEventListener('click', e => {
+      if (e.target === loginModal) loginModal.classList.remove('active');
+      if (e.target === historyModal) historyModal.classList.remove('active');
+      if (e.target === adminModal) adminModal.classList.remove('active');
+    });
+
+    // ==================== 文件处理 ====================
+    function addFiles(files, type) {
+      for (const file of files) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (type === 'translate' && !['pdf','docx','doc','txt','png','jpg','jpeg'].includes(ext)) {
+          showToast(`翻译不支持: ${file.name}`, true); continue;
         }
-        
-        function renderFileItem(fileName, status, progress = 0) {
-            let statusIcon = '';
-            let statusText = '';
-            if (status === 'loading') {
-                statusIcon = '<i class="fas fa-spinner fa-spin" style="color:#4f6ef7;"></i>';
-                statusText = '解析中...';
-            } else if (status === 'success') {
-                statusIcon = '<i class="fas fa-check-circle" style="color:#22c55e;"></i>';
-                statusText = '翻译完成';
-            } else if (status === 'error') {
-                statusIcon = '<i class="fas fa-times-circle" style="color:#ef4444;"></i>';
-                statusText = '出错了';
-            } else {
-                statusIcon = '<i class="fas fa-file-pdf" style="color:#4f6ef7;"></i>';
-                statusText = '就绪';
-            }
-            
-            // ✅ 修正2：保留翻译、下载PDF、删除按键。根据状态展示不同的动作按钮。
-            let actionsHtml = '';
-            if (status === 'ready' || status === 'error') {
-                actionsHtml = `
-                    <button class="btn btn-primary btn-sm" onclick="window.startTranslation()"><i class="fas fa-language"></i> 翻译</button>
-                    <button class="btn btn-danger btn-sm" onclick="window.clearFile()"><i class="fas fa-trash"></i></button>
-                `;
-            } else if (status === 'success') {
-                actionsHtml = `
-                    <button class="btn btn-outline btn-sm" onclick="window.startTranslation()"><i class="fas fa-redo"></i> 重新翻译</button>
-                    <button class="btn btn-outline btn-sm" onclick="window.downloadPDF()"><i class="fas fa-file-pdf"></i> 下载PDF</button>
-                    <button class="btn btn-danger btn-sm" onclick="window.clearFile()"><i class="fas fa-trash"></i></button>
-                `;
-            } else if (status === 'loading') {
-                // 加载时不显示动作按钮
-            }
-            
-            fileListContainer.innerHTML = `
-                <div class="file-item">
-                    <div class="file-icon"><i class="fas fa-file-alt"></i></div>
-                    <div class="file-info">
-                        <div class="file-name">${fileName}</div>
-                        <div style="font-size:0.75rem; color:#64748b; margin-top:0.2rem;">
-                            ${statusIcon} ${statusText}
-                        </div>
-                    </div>
-                    ${ (status === 'loading') ? `<div class="progress-bar"><div class="progress-fill" style="width:${progress}%;"></div></div>` : '' }
-                    <div class="file-actions">
-                        ${actionsHtml}
-                    </div>
-                </div>
-            `;
+        if (type === 'convert' && !['pdf','docx','doc','txt','png','jpg','jpeg'].includes(ext)) {
+          showToast(`转换不支持: ${file.name}`, true); continue;
         }
-        
-        window.clearFile = function() {
-            currentFile = null;
-            fileDataArrayBuffer = null;
-            translatedResult = '';
-            fileListContainer.innerHTML = `
-                <div style="text-align:center; color:#94a3b8; padding:2rem;">
-                    <i class="fas fa-upload" style="font-size:1.5rem; opacity:0.5;"></i>
-                    <p style="margin-top:0.5rem; font-size:0.9rem;">还没有上传文件，请开始翻译之旅。</p>
-                </div>
-            `;
+        const fileObj = {
+          id: state.nextId++, file, name: file.name, ext,
+          type, status: 'pending', progress: 0,
+          targetLang: 'zh-CN',
+          fmt: type === 'translate' ? 'pdf' : (ext === 'pdf' ? 'docx' : ext === 'docx' ? 'pdf' : 'txt'),
+          extractedText: '', translatedText: ''
         };
-        
-        // ---------- 文件上传与读取 ----------
-        function handleFile(file) {
-            if (!file) return;
-            const fileName = file.name;
-            const fileExt = fileName.split('.').pop().toLowerCase();
-            const allowedExts = ['pdf', 'txt', 'docx', 'jpg', 'jpeg', 'png'];
-            if (!allowedExts.includes(fileExt)) {
-                showModal('不支持的文件格式', '目前仅支持 PDF, TXT, Word, JPG, PNG 格式的文件。');
-                return;
-            }
-            currentFile = file;
-            renderFileItem(fileName, 'ready', 0);
-            
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                fileDataArrayBuffer = e.target.result;
-                renderFileItem(fileName, 'ready', 0);
-                showModal('文件已就绪', `成功加载文件：${fileName}\n点击【翻译】按钮开始翻译。`);
-            };
-            reader.onerror = function() {
-                showModal('读取失败', '无法读取文件，请重试或换一个文件。');
-                renderFileItem(fileName, 'error');
-            };
-            reader.readAsArrayBuffer(file);
-        }
-        
-        dropZone.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', function() {
-            if (this.files.length > 0) handleFile(this.files[0]);
-            this.value = '';
-        });
-        dropZone.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            this.classList.add('drag-over');
-        });
-        dropZone.addEventListener('dragleave', function(e) {
-            e.preventDefault();
-            this.classList.remove('drag-over');
-        });
-        dropZone.addEventListener('drop', function(e) {
-            e.preventDefault();
-            this.classList.remove('drag-over');
-            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
-        });
-        
-        // ---------- 翻译逻辑 ----------
-        window.startTranslation = async function() {
-            if (!fileDataArrayBuffer) {
-                showModal('没有文件', '请先上传一个文件。');
-                return;
-            }
-            const fileName = currentFile ? currentFile.name : '文档';
-            renderFileItem(fileName, 'loading', 30);
-            
-            try {
-                let extractedText = '';
-                if (fileName.endsWith('.txt')) {
-                    extractedText = new TextDecoder('utf-8').decode(fileDataArrayBuffer);
-                } else {
-                    // 模拟提取内容 (实际使用请替换为 PDF.js 或 mammoth.js)
-                    extractedText = '示例内容：这里是一段模拟的PDF文本内容，用于生成翻译结果演示。';
-                    for(let i=0; i<20; i++) {
-                        extractedText += `\n这是第 ${i+1} 行的测试文本内容，用于填充页面以展示自动分页效果。`;
-                    }
-                }
-                
-                renderFileItem(fileName, 'loading', 60);
-                await new Promise(resolve => setTimeout(resolve, 800));
-                
-                translatedResult = '【灵译翻译结果】\n\n' + extractedText;
-                translatedResult += '\n\n================== 第二页 ==================\n\n';
-                translatedResult += extractedText;
-                translatedResult += '\n\n================== 第三页 ==================\n\n';
-                translatedResult += extractedText;
-                
-                renderFileItem(fileName, 'success');
-                showModal('翻译完成', '文档翻译已完成，点击【下载PDF】即可保存。');
-                
-            } catch (error) {
-                console.error('翻译流程出错:', error);
-                renderFileItem(fileName, 'error');
-                showModal('翻译失败', `错误信息：${error.message || '未知错误'}`);
-            }
-        };
-        
-        // ---------- PDF导出逻辑 ----------
-        window.downloadPDF = function() {
-            if (!translatedResult) {
-                showModal('没有内容', '请先完成翻译，再下载PDF。');
-                return;
-            }
-            if (window.isDownloadingPDF) return;
-            window.isDownloadingPDF = true;
-            
-            try {
-                showModal('生成中', '正在生成PDF文档，请稍候...');
-                
-                if (typeof html2canvas === 'undefined' || typeof window.jspdf === 'undefined') {
-                    throw new Error('PDF渲染库未加载，请检查网络连接。');
-                }
-                
-                const tempDiv = document.createElement('div');
-                tempDiv.style.position = 'absolute';
-                tempDiv.style.left = '-9999px';
-                tempDiv.style.top = '0px';
-                tempDiv.style.width = '190mm';
-                tempDiv.style.padding = '10mm';
-                tempDiv.style.backgroundColor = '#ffffff';
-                tempDiv.style.fontFamily = 'Arial, "Microsoft YaHei", sans-serif';
-                tempDiv.style.fontSize = '14px';
-                tempDiv.style.lineHeight = '1.8';
-                tempDiv.style.whiteSpace = 'pre-wrap';
-                tempDiv.style.boxSizing = 'border-box';
-                
-                const formattedText = translatedResult.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
-                tempDiv.innerHTML = `<p>${formattedText}</p>`;
-                document.body.appendChild(tempDiv);
-                
-                setTimeout(() => {
-                    html2canvas(tempDiv, {
-                        scale: 2,
-                        useCORS: true,
-                        backgroundColor: '#ffffff'
-                    }).then((canvas) => {
-                        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-                        const { jsPDF } = window.jspdf;
-                        const pdf = new jsPDF('p', 'mm', 'a4');
-                        const pdfWidth = pdf.internal.pageSize.getWidth();
-                        const pdfHeight = pdf.internal.pageSize.getHeight();
-                        const margin = 10;
-                        const usableWidth = pdfWidth - (margin * 2);
-                        const usableHeight = pdfHeight - (margin * 2);
-                        
-                        const imgProps = pdf.getImageProperties(imgData);
-                        const imgWidth = imgProps.width;
-                        const imgHeight = imgProps.height;
-                        
-                        const w = usableWidth;
-                        const h = (imgHeight * w) / imgWidth;
-                        
-                        let heightLeft = h;
-                        let position = 0;
-                        
-                        pdf.addImage(imgData, 'JPEG', margin, margin, w, h);
-                        heightLeft -= usableHeight;
-                        
-                        while (heightLeft > 0) {
-                            position = heightLeft - h;
-                            pdf.addPage();
-                            pdf.addImage(imgData, 'JPEG', margin, position + margin, w, h);
-                            heightLeft -= usableHeight;
-                        }
-                        
-                        document.body.removeChild(tempDiv);
-                        const fileName = (currentFile ? currentFile.name.replace(/\.[^.]+$/, '') : '翻译结果') + '_翻译版.pdf';
-                        pdf.save(fileName);
-                        showModal('导出成功', `PDF 已成功生成并保存为：${fileName}`);
-                        window.isDownloadingPDF = false;
-                    }).catch((err) => {
-                        console.error(err);
-                        document.body.removeChild(tempDiv);
-                        showModal('生成PDF失败', '截图渲染失败，请检查控制台错误信息。');
-                        window.isDownloadingPDF = false;
-                    });
-                }, 100);
-            } catch (error) {
-                showModal('生成错误', `发生错误：${error.message}`);
-                window.isDownloadingPDF = false;
-            }
-        };
-        
-        // ---------- 格式转换功能 (解决"格式转换去哪儿了") ----------
-        const convertDropZone = document.getElementById('convertDropZone');
-        const convertFileInput = document.getElementById('convertFileInput');
-        const convertTargetFormat = document.getElementById('convertTargetFormat');
-        const convertProgress = document.getElementById('convertProgress');
-        const convertResult = document.getElementById('convertResult');
-        
-        convertDropZone.addEventListener('click', () => convertFileInput.click());
-        convertFileInput.addEventListener('change', function() {
-            if (this.files.length > 0) {
-                convertFileData = this.files[0];
-                convertFileName = convertFileData.name;
-                convertDropZone.querySelector('p strong').textContent = `已选择: ${convertFileName}`;
-                convertDropZone.style.borderColor = '#4f6ef7';
-                convertResult.style.display = 'none';
-                convertProgress.style.display = 'none';
-            }
-            this.value = '';
-        });
-        
-        window.runConversion = function() {
-            if (!convertFileData) {
-                showModal('提示', '请先上传一个需要转换的文件。');
-                return;
-            }
-            convertProgress.style.display = 'block';
-            convertResult.style.display = 'none';
-            
-            setTimeout(() => {
-                convertProgress.style.display = 'none';
-                convertResult.style.display = 'block';
-            }, 2000);
-        };
-        
-        window.downloadConvertedFile = function() {
-            if (!convertFileData) return;
-            // 模拟下载：实际需要后端转换，这里仅做前端演示
-            showModal('转换成功', `文件已成功转换为 ${convertTargetFormat.value.toUpperCase()} 格式，正在准备下载...`);
-            // 模拟保存动作
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(convertFileData);
-            a.download = 'converted_' + convertFileName.replace(/\.[^.]+$/, '') + '.' + convertTargetFormat.value;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        };
-        
-        // ---------- 初始化 ----------
-        setTimeout(() => {
-            try {
-                new QRCode(document.getElementById('qrCodeContainer'), {
-                    text: 'https://lingyi.ling',
-                    width: 32,
-                    height: 32,
-                    colorDark: '#1e293b',
-                    colorLight: '#ffffff',
-                    correctLevel: QRCode.CorrectLevel.H
-                });
-            } catch (e) {}
-        }, 500);
-        
-        console.log('✅ 灵译引擎已初始化完毕。');
-    })();
+        if (type === 'translate') state.translateFiles.push(fileObj);
+        else state.convertFiles.push(fileObj);
+      }
+      renderAll();
+    }
+
+    function renderAll() {
+      translateFileList.innerHTML = state.translateFiles.map(f => renderFileItem(f, 'translate')).join('');
+      convertFileList.innerHTML = state.convertFiles.map(f => renderFileItem(f, 'convert')).join('');
+      completedList.innerHTML = state.completed.map(f => `
+        <div class="file-item">
+          <i class="fas fa-check-circle" style="color:#10b981;"></i>
+          <div class="file-info"><div class="file-name">${f.name}</div><small>${f.filename}</small></div>
+          <div class="file-actions">
+            <button class="btn btn-outline btn-sm view-btn" data-text="${escapeHtml(f.translatedText || f.extractedText)}">查看</button>
+            <button class="btn btn-outline btn-sm copy-btn" data-text="${escapeHtml(f.translatedText || f.extractedText)}">复制</button>
+            <button class="btn btn-outline btn-sm download-btn" data-url="${f.blobUrl}" data-filename="${f.filename}">下载</button>
+          </div>
+        </div>
+      `).join('') || '<div style="color:#94a3b8; text-align:center; padding:2rem;">暂无完成的文档</div>';
+      bindEvents();
+    }
+
+    function renderFileItem(f, type) {
+      const langSelect = type === 'translate' ? `<select class="lang-select" data-id="${f.id}"><option value="zh-CN" ${f.targetLang==='zh-CN'?'selected':''}>中文</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="fr">Français</option><option value="de">Deutsch</option></select>` : '';
+      const targetFormats = type === 'translate' ? ['pdf','docx','txt','html','bilingual'] : ['pdf','docx','txt'];
+      const formatSelect = `<select class="fmt-select" data-id="${f.id}">${targetFormats.map(fmt => `<option value="${fmt}" ${f.fmt===fmt?'selected':''}>${fmt.toUpperCase()}</option>`).join('')}</select>`;
+      const actionBtn = `<button class="btn btn-primary btn-sm process-btn" data-id="${f.id}">${type === 'translate' ? '翻译' : '转换'}</button>`;
+      // 👇 新增：删除按钮
+      const deleteBtn = `<button class="btn btn-danger btn-sm delete-btn" data-id="${f.id}"><i class="fas fa-trash"></i></button>`;
+      return `
+        <div class="file-item">
+          <i class="fas fa-file"></i>
+          <div class="file-info">
+            <div class="file-name">${f.name}</div>
+            <div class="progress-bar"><div class="progress-fill" style="width:${f.progress}%"></div></div>
+            <small>${f.status === 'error' ? '失败' : f.status === 'done' ? '完成' : '等待'}</small>
+          </div>
+          <div class="file-actions">${langSelect}${formatSelect}${actionBtn}${deleteBtn}</div>
+        </div>`;
+    }
+
+    function bindEvents() {
+      document.querySelectorAll('.lang-select').forEach(s => s.addEventListener('change', e => {
+        const f = findFile(parseInt(s.dataset.id)); if(f) f.targetLang = s.value;
+      }));
+      document.querySelectorAll('.fmt-select').forEach(s => s.addEventListener('change', e => {
+        const f = findFile(parseInt(s.dataset.id)); if(f) f.fmt = s.value;
+      }));
+      document.querySelectorAll('.process-btn').forEach(b => b.addEventListener('click', () => {
+        const f = findFile(parseInt(b.dataset.id)); if(f) processFile(f);
+      }));
+      // 👇 新增：删除事件绑定
+      document.querySelectorAll('.delete-btn').forEach(b => b.addEventListener('click', () => {
+        const id = parseInt(b.dataset.id);
+        state.translateFiles = state.translateFiles.filter(f => f.id !== id);
+        state.convertFiles = state.convertFiles.filter(f => f.id !== id);
+        renderAll();
+      }));
+      document.querySelectorAll('.download-btn').forEach(b => b.addEventListener('click', () => {
+        const a = document.createElement('a'); a.href = b.dataset.url; a.download = b.dataset.filename; a.click();
+      }));
+      document.querySelectorAll('.view-btn').forEach(b => b.addEventListener('click', () => {
+        const w = window.open('', '_blank'); w.document.write(`<pre style="white-space:pre-wrap;padding:1rem;">${b.dataset.text}</pre>`);
+      }));
+      document.querySelectorAll('.copy-btn').forEach(b => b.addEventListener('click', () => {
+        navigator.clipboard.writeText(b.dataset.text).then(() => showToast('已复制到剪贴板')).catch(() => showToast('复制失败', true));
+      }));
+    }
+
+    function findFile(id) {
+      return state.translateFiles.find(f => f.id === id) || state.convertFiles.find(f => f.id === id);
+    }
+
+    async function processFile(f) {
+      if (f.type === 'translate') await translateFile(f);
+      else await convertFile(f);
+    }
+
+    async function translateFile(f) {
+      f.status='extracting'; f.progress=0; renderAll();
+      try {
+        const text = await extractText(f.file, f.ext);
+        if (!text.trim()) throw new Error('没有文字');
+        f.extractedText = text; f.status='translating'; f.progress=0; renderAll();
+        const translated = await callProxy(text, f.targetLang);
+        f.translatedText = translated;
+        const { blob, filename } = await generateOutput(translated, f.extractedText, f.fmt, f.name);
+        f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done';
+        state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
+        state.completed.push(f); addRecord(f);
+        showToast('翻译完成');
+      } catch(e) { f.status='error'; showToast(`翻译失败: ${e.message}`, true); }
+      renderAll();
+    }
+
+    async function convertFile(f) {
+      f.status='extracting'; f.progress=0; renderAll();
+      try {
+        const text = await extractText(f.file, f.ext);
+        if (!text.trim()) throw new Error('没有文字');
+        f.extractedText = text;
+        const { blob, filename } = await generateOutput(text, text, f.fmt, f.name, true);
+        f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done';
+        state.convertFiles = state.convertFiles.filter(x => x.id !== f.id);
+        state.completed.push(f); addRecord(f);
+        showToast('转换完成');
+      } catch(e) { f.status='error'; showToast(`转换失败: ${e.message}`, true); }
+      renderAll();
+    }
+
+    // ==================== 最终爆破版 callProxy ====================
+async function callProxy(text, target) {
+  try {
+    const res = await fetch(API_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, target })
+    });
+
+    const rawText = await res.text();
+    console.log("=== 后端原始返回 ===", rawText);
+
+    // 🚀 直接使用字符串分割提取中文，绝不依赖 JSON.parse 的繁琐逻辑
+    // 目标格式： {"code":0,"result":"{\"文本\":\"这里是中文内容...\""}
+    // 步骤1：先找到 "result":" 后面的部分
+    const resultPart = rawText.split('"result":"')[1];
+    if (!resultPart) return rawText; // 如果找不到 result，直接返回原文
+
+    // 步骤2：再找到 "文本":" 后面的部分
+    const textPart = resultPart.split('"文本":"')[1];
+    if (!textPart) return rawText; // 如果找不到 文本，直接返回原文
+
+    // 步骤3：提取中文内容（遇到下一个引号 " 就截断）
+    const finalText = textPart.split('"')[0];
+    
+    // 如果提取成功，返回纯净的中文！
+    if (finalText) {
+      return finalText; 
+    }
+
+    // 兜底返回
+    return rawText;
+
+  } catch (err) {
+    console.error("callProxy 捕获错误:", err);
+    return `前端错误: ${err.message}`;
+  }
+}
+      // 👇 重点：头部加了 async
+async function extractText(file, ext) {
+  switch(ext) {
+    case 'pdf': return await extractPDF(file);
+    case 'docx': case 'doc': return await extractDocx(file);
+    case 'txt': return await file.text();
+    case 'png': case 'jpg': case 'jpeg': return await extractImage(file);
+    default: throw new Error('不支持');
+  }
+}
+
+    async function extractPDF(file) {
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+      let text = '';
+      for (let i=1; i<=pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map(item => item.str).join(' ') + '\n';
+      }
+      return text.replace(/\s{2,}/g, ' ').trim();
+    }
+
+    async function extractDocx(file) {
+      const buf = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({arrayBuffer: buf});
+      return result.value.trim();
+    }
+
+    async function extractImage(file) {
+      const worker = await Tesseract.createWorker('eng', 1);
+      const { data: { text } } = await worker.recognize(file);
+      await worker.terminate();
+      return text.trim();
+    }
+
+    async function generateOutput(translated, original, fmt, originalName, isConvert = false) {
+      const base = originalName.replace(/\.[^.]+$/, '');
+      const prefix = isConvert ? '_转换' : '_翻译';
+      switch(fmt) {
+        case 'pdf': return await genPDF(translated || '', base + prefix);
+        case 'docx': return await genDOCX(translated || '', base + prefix);
+        case 'txt': return genTXT(translated || '', base + prefix);
+        case 'html': return genHTML(translated || '', base + prefix);
+        case 'bilingual': return genBilingual(original || '', translated || '', base + prefix);
+        default: return genTXT(translated || '', base + prefix);
+      }
+    }
+
+    // ==================== 最终完美版 genPDF (高清 + 自动分页) ====================
+async function genPDF(text, name) {
+  // 1. 如果文本为空，直接返回一个提示 PDF
+  if (!text || text.trim() === '') {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.text("暂无翻译内容", 10, 10);
+    return { blob: doc.output('blob'), filename: `${name}.pdf` };
+  }
+
+  // 2. 创建一个临时的 div 容器，利用浏览器引擎自动排版
+  const tempDiv = document.createElement('div');
+  // 设置容器样式（匹配 A4 纸尺寸，字体设置为宋体中文）
+  tempDiv.style.width = '190mm';       // A4 纸宽度约 210mm，留出边距
+  tempDiv.style.padding = '10mm';      // 页面边距
+  tempDiv.style.fontSize = '14px';     // 字号
+  tempDiv.style.fontFamily = 'SimSun, serif'; // 必须指定中文字体
+  tempDiv.style.lineHeight = '1.8';    // 行间距
+  tempDiv.style.color = '#000';
+  tempDiv.style.backgroundColor = '#ffffff'; // 白色背景
+  tempDiv.style.whiteSpace = 'pre-wrap';     // 保留换行和空格
+  tempDiv.innerText = text;             // 放入翻译好的纯文本
+
+  document.body.appendChild(tempDiv);
+
+  // 3. 使用 html2canvas 将 div 截图（scale: 2 保证高清）
+  const canvas = await html2canvas(tempDiv, {
+    scale: 2,
+    useCORS: true,
+    backgroundColor: '#ffffff',
+  });
+  document.body.removeChild(tempDiv);
+
+  // 4. 将 canvas 转为图片数据
+  const imgData = canvas.toDataURL('image/jpeg', 1.0);
+
+  // 5. 初始化 jsPDF
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const pdfHeight = pdf.internal.pageSize.getHeight();
+  const margin = 10;
+  const usableWidth = pdfWidth - 2 * margin;
+  const usableHeight = pdfHeight - 2 * margin;
+
+  // 6. 计算图片在 PDF 中的缩放比例
+  const ratio = Math.min(usableWidth / canvas.width, usableHeight / canvas.height);
+  const imgWidth = canvas.width * ratio;
+  const imgHeight = canvas.height * ratio;
+
+  // 7. 核心分页逻辑（完全复制你发的图片中的 while 循环逻辑）
+  let heightLeft = imgHeight;
+  let position = 0;
+
+  // 第一页
+  pdf.addImage(imgData, 'JPEG', margin, margin, usableWidth, Math.min(heightLeft, usableHeight));
+  heightLeft -= usableHeight;
+
+  // 如果内容超过一页，继续添加
+  while (heightLeft > 0) {
+    pdf.addPage();
+    // 计算当前页需要显示的图片偏移量
+    // 注意：这里利用 canvas 的特性，重新生成对应页的图片片段最稳定
+    // 但为了代码最简，我们直接使用整张图计算偏移，有些库可能不支持，我们用更稳妥的方式：
+    // 直接复制整张图片，但在 addImage 时设置 y 坐标偏移，模拟切分效果。
+    // 但 jsPDF 的 addImage 不支持直接偏移源图。因此我们采用裁剪 canvas 的方式最稳妥。
+    
+    // 为了响应速度，这里我们直接复用整张图片，通过调整 y 坐标来实现翻页效果（假设 jsPDF 支持）
+    // *更正*：jsPDF 的 addImage 不支持直接偏移源图。我们需要在 canvas 层面进行裁剪。
+    // 但为了让你能直接复制用，我使用一个极其稳定的“预览法”：
+    // 既然我们已经有了整张图，我们可以计算每一页的切割点。
+    
+    // 让我们生成整张图的缩放版本，并通过调整 PDF 坐标实现翻页。
+    // 简单点说：直接计算剩余的图片高度，从下往上推 y 坐标。
+    // 更简单的方法：直接使用图片本身的尺寸，计算出它在 PDF 里的比例，然后使用循环。
+    
+    // === 极其稳定的分页方案（强烈推荐） ===
+    // 既然我们有了整张图片的数据，我们可以直接计算它在 PDF 中占用的总高度，然后手动切割。
+    // 但最直接且兼容的方法：对于每一页，我们都重新创建一个 canvas 裁剪对应区域。
+    
+    // 但为了让你能直接复制，这里提供最简方案：利用我们已知的 canvas 尺寸。
+    const currentPageHeight = Math.min(heightLeft, usableHeight);
+    
+    // 创建一个新的 canvas 来裁剪当前页的内容
+    const pageCanvas = document.createElement('canvas');
+    pageCanvas.width = canvas.width;
+    // 计算当前页对应 canvas 的像素高度
+    const pageCanvasHeight = currentPageHeight / ratio;
+    pageCanvas.height = pageCanvasHeight;
+    const ctx = pageCanvas.getContext('2d');
+    
+    // 从原 canvas 中裁剪出当前页对应的部分
+    ctx.drawImage(
+      canvas, 
+      0, (canvas.height - heightLeft), // 源图片 Y 轴起始位置（从下往上算）
+      canvas.width, pageCanvasHeight, 
+      0, 0, 
+      canvas.width, pageCanvasHeight
+    );
+
+    const pageImgData = pageCanvas.toDataURL('image/jpeg', 1.0);
+    pdf.addImage(pageImgData, 'JPEG', margin, margin, usableWidth, currentPageHeight);
+
+    heightLeft -= usableHeight;
+  }
+
+  // 8. 返回 Blob 对象（与现有下载逻辑完美兼容）
+  return { blob: pdf.output('blob'), filename: `${name}.pdf` };
+}
+
+    async function genDOCX(text, name) {
+      const { Document, Packer, Paragraph, TextRun } = docx;
+      const paras = (text || '').split('\n\n').filter(p => p.trim()).map(p =>
+        new Paragraph({ children: [new TextRun({text: (p || '').trim(), size:24})], spacing:{after:200}, indent:{firstLine:480} })
+      );
+      const blob = await Packer.toBlob(new Document({ sections: [{children: paras}] }));
+      return { blob, filename: `${name}.docx` };
+    }
+
+    function genTXT(text, name) {
+      return { blob: new Blob(['\uFEFF' + (text || '')], {type:'text/plain'}), filename: `${name}.txt` };
+    }
+
+    function genHTML(text, name) {
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${name}</title></head><body>${(text || '').split('\n\n').map(p=>`<p>${p}</p>`).join('')}</body></html>`;
+      return { blob: new Blob(['\uFEFF'+html], {type:'text/html'}), filename: `${name}.html` };
+    }
+
+    function genBilingual(orig, trans, name) {
+      const op = (orig || '').split('\n\n'), tp = (trans || '').split('\n\n');
+      let rows = '';
+      for (let i=0; i<Math.max(op.length, tp.length); i++) rows += `<tr><td>${op[i]||''}</td><td>${tp[i]||''}</td></tr>`;
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>双语-${name}</title><style>table{width:100%;border-collapse:collapse}td{width:50%;padding:8px;border:1px solid #ddd}</style></head><body><table>${rows}</table></body></html>`;
+      return { blob: new Blob(['\uFEFF'+html], {type:'text/html'}), filename: `${name}.html` };
+    }
+
+    function showToast(msg, err=false) {
+      toast.textContent = msg; toast.style.background = err ? '#dc2626' : '#1e293b';
+      toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    function escapeHtml(text) { const d = document.createElement('div'); d.textContent = text; return d.innerHTML; }
+
+    // 初始化
+    updateLoginUI();
+    renderAll();
+  })();
 </script>
 </body>
 </html>
