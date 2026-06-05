@@ -575,7 +575,7 @@
       renderAll();
     }
 
-    // ==================== 完美提取版 callProxy ====================
+    // ==================== 最终正则提取版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -587,36 +587,29 @@ async function callProxy(text, target) {
     const rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 1. 安全解析最外层 JSON
-    let outer;
+    // 🚀 核心修改：直接使用正则表达式提取 "文本":"内容"
+    // 这个正则能完美匹配： "文本":"你好世界" 这样的结构
+    const regex = /"文本":"([^"]+)/;
+    const match = rawText.match(regex);
+
+    if (match && match[1]) {
+      // ✅ 如果匹配成功，直接返回纯净的中文内容！
+      return match[1]; 
+    }
+
+    // 如果正则没匹配到（比如后端格式变了），再尝试用 JSON.parse 兜底
     try {
-      outer = JSON.parse(rawText);
+      const outer = JSON.parse(rawText);
+      if (outer.code === 0 && outer.result) {
+        const inner = JSON.parse(outer.result);
+        if (inner.文本) return inner.文本;
+        if (inner.text) return inner.text;
+      }
+      return rawText;
     } catch (e) {
-      return rawText; // 如果不是 JSON，直接返回原文
+      return rawText; // 兜底返回原始内容
     }
 
-    // 2. 检查 code 是否为 0
-    if (outer.code !== 0) {
-      return outer.error || outer.message || `错误码: ${outer.code}`;
-    }
-
-    // 3. 获取 result（它是一个 JSON 字符串，比如 "{\"文本\":\"你好\"}"）
-    const resultStr = outer.result || "";
-    if (!resultStr) {
-      return "翻译结果为空";
-    }
-
-    // 4. 🚀 核心修复：二次解析 result，提取真正的文本
-    try {
-      const inner = JSON.parse(resultStr);
-      if (inner.文本) return inner.文本; // ✅ 成功提取！
-      if (inner.text) return inner.text; // 兼容
-    } catch (e) {
-      // 如果二次解析失败，说明 result 本身就是纯文本
-      return resultStr;
-    }
-
-    return resultStr; // 兜底
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
     return `前端错误: ${err.message}`;
@@ -671,10 +664,11 @@ async function extractText(file, ext) {
       }
     }
 
-    // ==================== 完美分页版 genPDF ====================
+    // ==================== 高清多页版 genPDF ====================
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
   
+  // 1. 创建临时 div 包裹文字（指定宋体，中文最美观）
   const tempDiv = document.createElement('div');
   tempDiv.style.width = '170mm';
   tempDiv.style.padding = '15mm';
@@ -686,10 +680,12 @@ async function genPDF(text, name) {
 
   document.body.appendChild(tempDiv);
   
+  // 2. 使用 html2canvas 渲染整张长图（scale: 2 保证高清）
   const canvas = await html2canvas(tempDiv, { scale: 2 });
   document.body.removeChild(tempDiv);
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
 
+  // 3. 准备 PDF
   const doc = new jsPDF('p', 'mm', 'a4');
   const pdfWidth = doc.internal.pageSize.getWidth();
   const pdfHeight = doc.internal.pageSize.getHeight();
@@ -697,10 +693,12 @@ async function genPDF(text, name) {
   const contentWidth = pdfWidth - 2 * margin;
   const contentHeight = pdfHeight - 2 * margin;
 
+  // 4. 计算图片在 PDF 里的比例
   const ratio = Math.min(contentWidth / canvas.width, contentHeight / canvas.height);
   const imgWidth = canvas.width * ratio;
   const imgHeight = canvas.height * ratio;
 
+  // 5. 分页循环（确保每一页都有内容）
   let heightLeft = imgHeight;
   let position = 0;
 
