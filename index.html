@@ -587,40 +587,36 @@ async function callProxy(text, target) {
     const rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 步骤1: 解析最外层的 JSON
+    // 1. 安全解析最外层 JSON
     let outer;
     try {
       outer = JSON.parse(rawText);
     } catch (e) {
-      return rawText; // 如果最外层都不是 JSON，直接返回原文
+      return rawText; // 如果不是 JSON，直接返回原文
     }
 
-    // 步骤2: 检查后端状态
+    // 2. 检查 code 是否为 0
     if (outer.code !== 0) {
-      return outer.error || outer.message || `后端错误码: ${outer.code}`;
+      return outer.error || outer.message || `错误码: ${outer.code}`;
     }
 
-    // 步骤3: 获取 result (它是一个 JSON 字符串，比如 "{\"文本\":\"你好\"}")
+    // 3. 获取 result（它是一个 JSON 字符串，比如 "{\"文本\":\"你好\"}"）
     const resultStr = outer.result || "";
-    if (!resultStr) return "翻译结果为空";
+    if (!resultStr) {
+      return "翻译结果为空";
+    }
 
-    // 步骤4: 解析 result 里的 JSON 字符串，提取 "文本" 字段
+    // 4. 🚀 核心修复：二次解析 result，提取真正的文本
     try {
       const inner = JSON.parse(resultStr);
-      if (inner.文本) {
-        return inner.文本; // ✅ 成功提取中文翻译！
-      }
-      if (inner.text) {
-        return inner.text; // 兼容其他字段名
-      }
+      if (inner.文本) return inner.文本; // ✅ 成功提取！
+      if (inner.text) return inner.text; // 兼容
     } catch (e) {
-      // 如果解析失败，说明 result 本身就是纯文本
+      // 如果二次解析失败，说明 result 本身就是纯文本
       return resultStr;
     }
 
-    // 兜底
-    return resultStr;
-
+    return resultStr; // 兜底
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
     return `前端错误: ${err.message}`;
