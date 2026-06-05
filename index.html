@@ -575,7 +575,7 @@
       renderAll();
     }
 
-    // ==================== 完美提取版 callProxy ====================
+    // ==================== 最终防崩溃版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -591,30 +591,34 @@ async function callProxy(text, target) {
     try {
       data = JSON.parse(rawText);
     } catch (e) {
-      console.warn("后端返回的不是 JSON，返回原文或空");
+      // 如果不是 JSON，直接返回原文
       return rawText || "";
     }
 
-    // 🚀 核心修改：不管 code 如何，直接尝试提取 result 里的中文
+    // 1. 获取 result 字段
     let finalResult = data.result || "";
 
-    // 尝试解析 result 里的嵌套 JSON（提取 "文本"）
-    // 你的后端返回的结构是：{"code":0, "result":"{\"文本\":\"中文翻译...\"}"}
+    // 2. 尝试解析 result 里的嵌套 JSON（提取 "文本"）
+    // 你的后端返回的是：`{"code":0, "result":"{\"文本\":\"你好...\"}"}`
     try {
-      // 如果 finalResult 看起来像是一个 JSON 字符串，就尝试解析它
+      // 判断是不是 JSON 字符串格式
       if (typeof finalResult === 'string' && finalResult.trim().startsWith('{')) {
         const parsedInner = JSON.parse(finalResult);
+        // 尝试提取 "文本" 字段
         if (parsedInner.文本) {
-          finalResult = parsedInner.文本; // ✅ 提取真正的翻译内容
+          finalResult = parsedInner.文本; // ✅ 成功提取！
         } else if (parsedInner.text) {
           finalResult = parsedInner.text;
         }
       }
     } catch (e) {
-      // 如果解析失败，说明 finalResult 本身就是纯文本
+      // 解析失败，说明结果本身就是纯文本
     }
 
-    // 返回翻译文本
+    // 🚀 调试：弹窗显示提取到的结果
+    alert(`🔍 callProxy 最终提取到的内容:\n\n"${finalResult}"`);
+
+    // 返回提取到的内容
     return finalResult || ""; 
 
   } catch (err) {
