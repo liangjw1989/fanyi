@@ -574,50 +574,35 @@
       renderAll();
     }
 
-    // ==================== 最终解析版 callProxy ====================
+    // ==================== 暴力显示版 callProxy ====================
 async function callProxy(text, target) {
+  const res = await fetch(API_PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, target })
+  });
+
+  // 1. 获取原始文本
+  const rawText = await res.text();
+  
+  // 2. 直接弹窗显示原始内容
+  alert(`👀 后端返回的原始内容是:\n\n${rawText}`);
+
+  console.log("=== 后端返回的原始内容 ===", rawText);
+
+  // 3. 尝试解析一下，如果失败就直接返回空
   try {
-    const res = await fetch(API_PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, target })
-    });
-
-    const rawText = await res.text();
-    console.log("=== 后端返回的原始内容 ===", rawText);
-
-    let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch (e) {
-      throw new Error(`后端返回的不是 JSON，内容是: ${rawText.substring(0, 100)}...`);
-    }
-
+    const data = JSON.parse(rawText);
+    // 如果解析成功，但缺少 code，也弹窗提醒
     if (data.code !== 0) {
-      const errMsg = data.error || data.message || `未知错误 (Code: ${data.code})`;
-      throw new Error(errMsg);
+      alert(`⚠️ 后端返回了非0状态码或缺少code: ${JSON.stringify(data)}`);
     }
-
-    // 🚀 重点：提取翻译文本
-    // 你的后端返回的是：`{"code":0, "result":"{\"文本\":\"中文翻译内容...\"}"}`
-    // 下面这步就是要把里面的 "中文翻译内容..." 取出来
-    let finalResult = data.result || '';
-    
-    // 解析嵌套的 JSON 字符串
-    try {
-      const parsedInner = JSON.parse(finalResult);
-      if (parsedInner.文本) finalResult = parsedInner.文本; // 提取“文本”字段
-      else if (parsedInner.text) finalResult = parsedInner.text;
-    } catch (e) {
-      // 如果不是嵌套 JSON，那它本身就是纯文本
-    }
-
-    return finalResult;
-
-  } catch (err) {
-    console.error("callProxy 捕获错误:", err);
-    alert("DEBUG: 真实错误信息 -> " + err.message);
-    throw new Error(err.message || '翻译接口错误');
+    // 返回空字符串，保证页面不崩溃
+    return "";
+  } catch (e) {
+    // 解析失败，说明返回的不是 JSON
+    alert(`❌ 后端返回的不是 JSON: ${rawText}`);
+    return "";
   }
 }
       // 👇 重点：头部加了 async
