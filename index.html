@@ -575,7 +575,7 @@
       renderAll();
     }
 
-    // ==================== 终极正则版 callProxy ====================
+    // ==================== 最终暴力解析版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -585,28 +585,22 @@ async function callProxy(text, target) {
     });
 
     const rawText = await res.text();
-    console.log("=== 后端原始返回 ===", rawText);
+    console.log(">>> 后端原始返回:", rawText);
 
-    // 🚀 核心：正则表达式提取 "文本":"内容"
-    const match = rawText.match(/"文本":"([^"]+)/);
-    if (match && match[1]) {
-      return match[1]; // ✅ 返回真正的翻译文本
-    }
+    // 🚀 核心：逐层解析 JSON，提取中文
+    // 步骤1：解析最外层的 JSON，拿到 result
+    const outer = JSON.parse(rawText);
+    if (outer.code !== 0) return rawText; // 如果失败，直接返回原文
 
-    // 如果正则没匹配到，尝试用 JSON 解析兜底
-    try {
-      const data = JSON.parse(rawText);
-      if (data.result) {
-        const inner = JSON.parse(data.result);
-        if (inner.文本) return inner.文本;
-      }
-    } catch (e) {}
+    // 步骤2：解析 result 里的 JSON 字符串，提取 "文本" 字段
+    const inner = JSON.parse(outer.result);
+    if (inner.文本) return inner.文本; // ✅ 拿到纯中文翻译
+    if (inner.text) return inner.text;
 
-    // 兜底返回
-    return rawText;
+    return outer.result; // 兜底返回
   } catch (err) {
-    console.error(err);
-    return "";
+    console.error("callProxy 解析出错:", err);
+    return "翻译失败，请检查网络";
   }
 }
       // 👇 重点：头部加了 async
@@ -658,11 +652,11 @@ async function extractText(file, ext) {
       }
     }
 
-    // ==================== 完美多页版 genPDF ====================
+    // ==================== 绝对多页版 genPDF ====================
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
   
-  // 1. 创建临时 div 包裹文字（宋体，适配中文）
+  // 1. 创建临时 div
   const tempDiv = document.createElement('div');
   tempDiv.style.width = '170mm';
   tempDiv.style.padding = '15mm';
@@ -674,12 +668,12 @@ async function genPDF(text, name) {
 
   document.body.appendChild(tempDiv);
   
-  // 2. 使用 html2canvas 渲染整张长图（高清）
+  // 2. 生成高清长图
   const canvas = await html2canvas(tempDiv, { scale: 2 });
   document.body.removeChild(tempDiv);
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
 
-  // 3. 计算页数和分页
+  // 3. 初始化 PDF
   const doc = new jsPDF('p', 'mm', 'a4');
   const pdfWidth = doc.internal.pageSize.getWidth();
   const pdfHeight = doc.internal.pageSize.getHeight();
@@ -687,45 +681,32 @@ async function genPDF(text, name) {
   const contentWidth = pdfWidth - 2 * margin;
   const contentHeight = pdfHeight - 2 * margin;
 
-  // 计算图片缩放比例
+  // 4. 计算图片在 PDF 里的比例
   const ratio = Math.min(contentWidth / canvas.width, contentHeight / canvas.height);
   const imgWidth = canvas.width * ratio;
   const imgHeight = canvas.height * ratio;
 
-  // 计算需要的页数
-  const totalPages = Math.ceil(imgHeight / contentHeight);
-  let remainingHeight = imgHeight;
+  // 5. 分页循环（确保每一页都能显示）
+  let heightLeft = imgHeight;
+  let position = 0;
 
-  for (let pageNum = 0; pageNum < totalPages; pageNum++) {
-    if (pageNum > 0) {
-      doc.addPage();
-    }
+  while (heightLeft > 0) {
+    if (position > 0) doc.addPage();
 
-    // 计算当前页显示的图片高度
-    const currentHeight = Math.min(remainingHeight, contentHeight);
-    
-    // 通过裁剪 canvas 生成当前页的图片
+    // 计算当前页显示的高度
+    const currentHeight = Math.min(heightLeft, contentHeight);
+    // 切割 canvas 对应区域
     const pageCanvas = document.createElement('canvas');
     pageCanvas.width = canvas.width;
     pageCanvas.height = currentHeight / ratio;
     const ctx = pageCanvas.getContext('2d');
+    ctx.drawImage(canvas, 0, position / ratio, canvas.width, pageCanvas.height, 0, 0, canvas.width, pageCanvas.height);
     
-    // 从上到下裁剪
-    const sourceY = (pageNum * contentHeight) / ratio;
-    ctx.drawImage(
-      canvas, 
-      0, sourceY, 
-      canvas.width, pageCanvas.height, 
-      0, 0, 
-      canvas.width, pageCanvas.height
-    );
-
     const pageImgData = pageCanvas.toDataURL('image/jpeg', 1.0);
-
-    // 将图片添加到 PDF 页面
     doc.addImage(pageImgData, 'JPEG', margin, margin, contentWidth, currentHeight);
 
-    remainingHeight -= currentHeight;
+    heightLeft -= currentHeight;
+    position += currentHeight;
   }
 
   return { blob: doc.output('blob'), filename: `${name}.pdf` };
