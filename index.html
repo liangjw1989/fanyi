@@ -575,7 +575,7 @@
       renderAll();
     }
 
-    // ==================== 万无一失版 callProxy ====================
+    // ==================== 终极真相版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -584,35 +584,41 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
+    // 1. 获取原始内容，不做任何预处理
     const rawText = await res.text();
-    console.log("=== 后端原始返回 ===", rawText);
+    console.log("=== 后端返回的原始内容 ===", rawText);
 
-    // 🚀 第一层：解析最外层的 JSON
-    const outer = JSON.parse(rawText);
+    // 2. 如果后端返回空字符串，直接返回
+    if (!rawText) return "后端返回空";
+
+    // 3. 尝试解析 JSON
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (e) {
+      // 如果连 JSON 都不是，直接返回原始内容（可能是个 HTML 错误页）
+      return rawText; 
+    }
+
+    // 4. 只要代码不是 0，或者缺少 result，我们就返回原始内容，让你亲眼看到
+    if (data.code !== 0 || !data.result) {
+      return rawText; // 👈 这里直接返回原始 rawText，所有问题都会现形
+    }
+
+    // 5. 如果一切完美，提取翻译
+    // 你的后端格式是：{"code":0,"result":"{\"文本\":\"你好...\"}"}
+    let finalResult = data.result;
+    try {
+      const inner = JSON.parse(finalResult);
+      if (inner.文本) return inner.文本;
+      if (inner.text) return inner.text;
+    } catch (e) {}
     
-    // 如果后端返回了错误码，直接返回错误信息
-    if (outer.code !== 0) {
-      return outer.error || outer.message || `错误码: ${outer.code}`;
-    }
-
-    // 🚀 第二层：解析 `result` 里面的字符串（这里是关键）
-    // 你的后端返回的是: `{"code":0, "result":"{\"文本\":\"你好...\"}"}`
-    const inner = JSON.parse(outer.result);
-
-    // ✅ 第三层：提取中文
-    if (inner.文本) {
-      return inner.文本; // 成功提取！
-    }
-    if (inner.text) {
-      return inner.text; // 兼容格式
-    }
-
-    // 兜底：如果解析失败，返回原始内容
-    return rawText;
+    return finalResult;
 
   } catch (err) {
-    console.error("callProxy 解析出错:", err);
-    return "翻译解析失败";
+    console.error("callProxy 捕获错误:", err);
+    return `前端错误: ${err.message}`;
   }
 }
       // 👇 重点：头部加了 async
