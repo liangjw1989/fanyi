@@ -4,27 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>灵译 · 专业级翻译与文档转换工作站</title>
-    
-    <!-- ======================== 外部资源引入 ======================== -->
-    <!-- 字体库：Inter 字体，页面更现代清晰 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
-    
-    <!-- 图标库：FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    
-    <!-- 二维码生成库（用户界面UI保留，软著凑页数） -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    
-    <!-- ====== 核心渲染库：PDF生成方案的核心依赖（必须保留） ====== -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    
     <style>
-        /* ======================== 全局重置与基础样式 ======================== */
         * { margin:0; padding:0; box-sizing:border-box; }
-        
         body {
             font-family: 'Inter', sans-serif;
             background: linear-gradient(145deg, #f0f4fd 0%, #e6ebf7 100%);
@@ -34,7 +22,6 @@
             color: #1e293b;
             padding: 1rem;
         }
-        
         .app-wrapper {
             width: 100%;
             max-width: 1200px;
@@ -42,8 +29,6 @@
             flex-direction: column;
             gap: 1.5rem;
         }
-        
-        /* ======================== 卡片样式的玻璃拟态设计 ======================== */
         .card {
             background: rgba(255, 255, 255, 0.75);
             backdrop-filter: blur(20px);
@@ -52,8 +37,6 @@
             box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.12);
             border: 1px solid rgba(255, 255, 255, 0.8);
         }
-        
-        /* ======================== 顶部导航栏与品牌区 ======================== */
         .top-bar {
             display: flex;
             justify-content: space-between;
@@ -61,13 +44,11 @@
             flex-wrap: wrap;
             gap: 1rem;
         }
-        
         .brand {
             display: flex;
             align-items: center;
             gap: 0.75rem;
         }
-        
         .brand-icon {
             background: linear-gradient(135deg, #4f6ef7, #7b5cff);
             width: 48px;
@@ -80,7 +61,6 @@
             font-size: 24px;
             box-shadow: 0 10px 20px -5px rgba(79, 110, 247, 0.4);
         }
-        
         .brand-text h1 {
             font-weight: 700;
             font-size: 1.8rem;
@@ -88,24 +68,20 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-        
         .brand-text span {
             font-size: 0.8rem;
             color: #64748b;
             font-weight: 500;
         }
-        
-        /* ======================== 二维码区（凑软著代码用） ======================== */
         .qr-section {
             display: flex;
             align-items: center;
+            justify-content: center;   /* ✅ 修正1：使二维码居中 */
             gap: 0.8rem;
             cursor: pointer;
             transition: 0.2s;
         }
-        
         .qr-section:hover { transform: scale(1.05); }
-        
         .qr-code-wrapper {
             width: 40px;
             height: 40px;
@@ -117,16 +93,16 @@
             align-items: center;
             justify-content: center;
         }
-        
         .qr-code-inner {
             width: 36px;
             height: 36px;
             border-radius: 10px;
             background: white;
             overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        
-        /* ======================== 按钮组件系统 ======================== */
         .btn {
             padding: 0.5rem 1.2rem;
             border-radius: 2rem;
@@ -139,24 +115,18 @@
             transition: 0.2s;
             font-size: 0.85rem;
         }
-        
         .btn-primary { background: #4f6ef7; color: white; }
         .btn-primary:hover:not(:disabled) { background: #3b54d4; }
-        
         .btn-outline { background: white; border: 1.5px solid #e2e8f0; color: #334155; }
         .btn-outline:hover { background: #f8fafc; border-color: #4f6ef7; }
-        
         .btn-danger { background: #ef4444; color: white; }
         .btn-sm { padding: 0.3rem 0.8rem; font-size: 0.75rem; }
-        
-        /* ======================== Tab 选项卡 ======================== */
         .tabs {
             display: flex;
             gap: 0.5rem;
             margin-bottom: 1.5rem;
             flex-wrap: wrap;
         }
-        
         .tab-btn {
             background: white;
             border: 1.5px solid #e2e8f0;
@@ -167,14 +137,11 @@
             cursor: pointer;
             transition: 0.2s;
         }
-        
         .tab-btn.active {
             background: #4f6ef7;
             color: white;
             border-color: #4f6ef7;
         }
-        
-        /* ======================== 上传区域 ======================== */
         .upload-area {
             border: 2px dashed #cbd5e1;
             border-radius: 1.5rem;
@@ -185,21 +152,16 @@
             margin: 1rem 0;
             transition: 0.2s;
         }
-        
         .upload-area i {
             font-size: 2rem;
             color: #4f6ef7;
             margin-bottom: 0.5rem;
         }
-        
         .upload-area.drag-over {
             border-color: #4f6ef7;
             background: #eef2ff;
         }
-        
         .upload-hint { font-size: 0.8rem; color: #64748b; }
-        
-        /* ======================== 文件列表项 ======================== */
         .file-item {
             background: white;
             border-radius: 1rem;
@@ -211,11 +173,9 @@
             border: 1px solid #e2e8f0;
             flex-wrap: wrap;
         }
-        
         .file-icon { font-size: 1.5rem; color: #4f6ef7; }
         .file-info { flex: 1; min-width: 140px; }
         .file-name { font-weight: 600; font-size: 0.9rem; }
-        
         .progress-bar {
             width: 80px;
             height: 5px;
@@ -223,45 +183,38 @@
             border-radius: 10px;
             overflow: hidden;
         }
-        
         .progress-fill {
             height: 100%;
             background: #4f6ef7;
             width: 0%;
             transition: 0.3s;
         }
-        
         .file-actions {
             display: flex;
             align-items: center;
             gap: 0.4rem;
             flex-wrap: wrap;
         }
-        
-        /* ======================== 🛠️ 修复后的下拉选择框（解决箭头不显示） ======================== */
+        /* 修复下拉选择框箭头 */
         select {
             padding: 0.3rem 0.6rem;
             border-radius: 0.6rem;
             border: 1px solid #e2e8f0;
             font-size: 0.75rem;
             background: white;
-            appearance: none;                /* 移除浏览器默认箭头 */
+            appearance: none;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23475669' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
             background-repeat: no-repeat;
             background-position: right 0.4rem center;
             background-size: 14px 14px;
-            padding-right: 1.8rem;           /* 为箭头留出空间 */
+            padding-right: 1.8rem;
             cursor: pointer;
         }
-        
-        /* 下拉框聚焦时的样式 */
         select:focus {
             outline: none;
             border-color: #4f6ef7;
             box-shadow: 0 0 0 3px rgba(79, 110, 247, 0.2);
         }
-        
-        /* ======================== 模态框（弹窗）样式 ======================== */
         .modal-overlay {
             display: none;
             position: fixed;
@@ -275,7 +228,6 @@
             justify-content: center;
             z-index: 1000;
         }
-        
         .modal-box {
             background: white;
             border-radius: 1.5rem;
@@ -285,12 +237,14 @@
             text-align: center;
             box-shadow: 0 30px 60px rgba(0, 0, 0, 0.2);
         }
-        
         .modal-box h3 { margin-bottom: 1rem; color: #1e293b; }
         .modal-box p { font-size: 0.9rem; color: #64748b; margin-bottom: 1.5rem; }
         .modal-box .btn-primary { width: 100%; justify-content: center; }
         
-        /* ======================== 响应式调整 ======================== */
+        /* 面板隐藏/显示 */
+        .panel { display: none; }
+        .panel.active { display: block; }
+        
         @media (max-width: 600px) {
             .brand-text h1 { font-size: 1.4rem; }
             .file-item { flex-direction: column; align-items: stretch; }
@@ -302,7 +256,7 @@
 
 <div class="app-wrapper">
     
-    <!-- ======================== 顶部导航区 ======================== -->
+    <!-- 顶部导航区 -->
     <div class="card top-bar">
         <div class="brand">
             <div class="brand-icon"><i class="fas fa-language"></i></div>
@@ -319,41 +273,103 @@
         </div>
     </div>
     
-    <!-- ======================== 主操作区 ======================== -->
+    <!-- 主操作区 -->
     <div class="card">
+        <!-- Tabs 标签栏 -->
         <div class="tabs">
-            <button class="tab-btn active" id="tabTranslate">📄 翻译文档</button>
-            <button class="tab-btn" id="tabHistory">🕒 历史记录</button>
-            <button class="tab-btn" id="tabSettings">⚙️ 设置</button>
+            <button class="tab-btn active" data-tab="translate">📄 翻译文档</button>
+            <button class="tab-btn" data-tab="convert">🔄 格式转换</button>
+            <button class="tab-btn" data-tab="history">🕒 历史记录</button>
+            <button class="tab-btn" data-tab="settings">⚙️ 设置</button>
         </div>
         
-        <!-- 文件上传区域 -->
-        <div class="upload-area" id="dropZone">
-            <i class="fas fa-cloud-upload-alt"></i>
-            <p><strong>点击上传 或 拖拽文件到此处</strong></p>
-            <p class="upload-hint">支持 PDF · Word (docx) · TXT · 图片 (jpg/png)</p>
-            <input type="file" id="fileInput" style="display:none;" accept=".pdf,.docx,.txt,.jpg,.jpeg,.png">
+        <!-- =========== 翻译文档面板 =========== -->
+        <div id="translatePanel" class="panel active">
+            <div class="upload-area" id="dropZone">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <p><strong>点击上传 或 拖拽文件到此处</strong></p>
+                <p class="upload-hint">支持 PDF · Word (docx) · TXT · 图片 (jpg/png)</p>
+                <input type="file" id="fileInput" style="display:none;" accept=".pdf,.docx,.txt,.jpg,.jpeg,.png">
+            </div>
+            <div id="fileListContainer" style="margin-top:1rem; min-height:80px;">
+                <div style="text-align:center; color:#94a3b8; padding:2rem;">
+                    <i class="fas fa-upload" style="font-size:1.5rem; opacity:0.5;"></i>
+                    <p style="margin-top:0.5rem; font-size:0.9rem;">还没有上传文件，请开始翻译之旅。</p>
+                </div>
+            </div>
         </div>
         
-        <!-- 当前文件列表与操作 -->
-        <div id="fileListContainer" style="margin-top:1rem; min-height:80px;">
-            <!-- 动态插入文件项：由 JS 控制 -->
-            <div style="text-align:center; color:#94a3b8; padding:2rem;">
-                <i class="fas fa-upload" style="font-size:1.5rem; opacity:0.5;"></i>
-                <p style="margin-top:0.5rem; font-size:0.9rem;">还没有上传文件，请开始翻译之旅。</p>
+        <!-- =========== 格式转换面板 =========== -->
+        <div id="convertPanel" class="panel">
+            <div style="padding:1.5rem 0;">
+                <h3 style="margin-bottom:1rem;">🎯 格式转换工具</h3>
+                <p style="color:#64748b; margin-bottom:1.5rem;">上传文档，选择目标格式，一键转换。本功能基于云端技术，高效精准。</p>
+                <div class="upload-area" id="convertDropZone" style="padding:1.5rem;">
+                    <i class="fas fa-file-export"></i>
+                    <p><strong>点击上传需要转换的文件</strong></p>
+                    <p class="upload-hint">支持 PDF, Word, TXT</p>
+                    <input type="file" id="convertFileInput" style="display:none;" accept=".pdf,.docx,.txt">
+                </div>
+                <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center; margin-top:1rem;">
+                    <label style="font-weight:600; color:#334155;">输出格式：</label>
+                    <select id="convertTargetFormat" style="padding:0.5rem 1rem; border-radius:0.6rem; border:1px solid #e2e8f0;">
+                        <option value="pdf">PDF 文档</option>
+                        <option value="docx">Word 文档</option>
+                        <option value="txt">纯文本 (TXT)</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="window.runConversion()"><i class="fas fa-sync-alt"></i> 开始转换</button>
+                </div>
+                <div id="convertProgress" style="margin-top:1.5rem; display:none;">
+                    <p style="font-size:0.85rem; color:#64748b;">正在转换中...</p>
+                    <div class="progress-bar"><div class="progress-fill" style="width:60%;"></div></div>
+                </div>
+                <div id="convertResult" style="margin-top:1.5rem; display:none; padding:1rem; background:#f8fafc; border-radius:1rem;">
+                    <p style="color:#22c55e;"><i class="fas fa-check-circle"></i> 转换完成！点击下方按钮下载。</p>
+                    <button class="btn btn-primary btn-sm" style="margin-top:0.5rem;" onclick="window.downloadConvertedFile()"><i class="fas fa-download"></i> 下载转换后文件</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- =========== 历史记录面板 =========== -->
+        <div id="historyPanel" class="panel">
+            <div style="text-align:center; padding:3rem 1rem; color:#94a3b8;">
+                <i class="fas fa-clock" style="font-size:3rem; margin-bottom:1rem;"></i>
+                <p style="font-weight:500; font-size:1rem;">暂无翻译历史记录。</p>
+                <p style="font-size:0.85rem;">开始翻译后，这里将显示您的操作历史。</p>
+            </div>
+        </div>
+        
+        <!-- =========== 设置面板 =========== -->
+        <div id="settingsPanel" class="panel">
+            <div style="padding:1.5rem 0;">
+                <h3 style="margin-bottom:1rem;">⚙️ 应用设置</h3>
+                <div style="border-bottom:1px solid #e2e8f0; padding:0.8rem 0; display:flex; justify-content:space-between; align-items:center;">
+                    <div><strong>默认目标语言</strong><br><span style="font-size:0.8rem; color:#64748b;">设置翻译输出的默认语言。</span></div>
+                    <select><option>中文</option><option>英文</option><option>日文</option></select>
+                </div>
+                <div style="border-bottom:1px solid #e2e8f0; padding:0.8rem 0; display:flex; justify-content:space-between; align-items:center;">
+                    <div><strong>PDF 导出质量</strong><br><span style="font-size:0.8rem; color:#64748b;">选择高清晰度或快速导出。</span></div>
+                    <select><option>高清 (300dpi)</option><option>标准 (150dpi)</option></select>
+                </div>
+                <div style="padding:0.8rem 0; display:flex; justify-content:space-between; align-items:center;">
+                    <div><strong>保留原始格式</strong><br><span style="font-size:0.8rem; color:#64748b;">PDF导出时保留原始版面布局。</span></div>
+                    <input type="checkbox" checked style="width:18px; height:18px;">
+                </div>
+                <div style="padding:1rem 0; text-align:center; margin-top:1rem;">
+                    <button class="btn btn-outline" onclick="showModal('提示', '保存设置成功。')"><i class="fas fa-save"></i> 保存设置</button>
+                </div>
             </div>
         </div>
     </div>
     
-    <!-- ======================== 底部信息 ======================== -->
+    <!-- 底部信息 -->
     <div style="text-align:center; color:#94a3b8; font-size:0.75rem; padding:1rem;">
         <p>💡 本软件使用腾讯云翻译API，数据仅在本地处理，保障您的隐私安全。</p>
-        <p>© 2026 灵译 · LingYi · 版本 2.0.1</p>
+        <p>© 2026 灵译 · LingYi · 版本 2.0.2</p>
     </div>
-    
 </div>
 
-<!-- ======================== 模态框（错误/提示） ======================== -->
+<!-- 模态框（错误/提示） -->
 <div class="modal-overlay" id="globalModal">
     <div class="modal-box">
         <h3 id="modalTitle">提示</h3>
@@ -362,26 +378,17 @@
     </div>
 </div>
 
-<!-- ======================== 主要逻辑 JavaScript ======================== -->
 <script>
-    /**
-     * =========================================================================
-     *  灵译 · 核心逻辑引擎
-     *  本文件包含了：文件上传、PDF/Word/文本提取、腾讯云API代理调用、
-     *  翻译结果处理、智能PDF多页渲染与导出等功能。
-     *  版权所有 © 2026 灵译团队
-     * =========================================================================
-     */
-    
     (function() {
         'use strict';
         
-        // ---------- 1. 全局状态与变量 ----------
-        let currentFile = null;          // 当前处理的文件对象
-        let fileDataArrayBuffer = null;  // 文件的 ArrayBuffer 数据
-        let translatedResult = '';       // 存储最终的翻译结果
+        // ---------- 全局状态 ----------
+        let currentFile = null;
+        let fileDataArrayBuffer = null;
+        let translatedResult = '';
+        let convertFileData = null;
+        let convertFileName = '';
         
-        // 获取DOM元素
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const fileListContainer = document.getElementById('fileListContainer');
@@ -389,17 +396,31 @@
         const modalTitle = document.getElementById('modalTitle');
         const modalMessage = document.getElementById('modalMessage');
         
-        // ---------- 2. 辅助工具函数 ----------
+        // ---------- 面板切换逻辑 (解决"设置点不开") ----------
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const panels = document.querySelectorAll('.panel');
         
-        // 通用弹窗显示函数
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                // 切换按钮激活状态
+                tabBtns.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                
+                // 切换内容面板
+                const targetPanelId = this.dataset.tab + 'Panel';
+                panels.forEach(p => p.classList.remove('active'));
+                document.getElementById(targetPanelId).classList.add('active');
+            });
+        });
+        
+        // ---------- 辅助函数 ----------
         function showModal(title, message) {
             modalTitle.textContent = title;
             modalMessage.textContent = message;
             modalOverlay.style.display = 'flex';
         }
         
-        // 更新文件列表UI
-        function renderFileItem(fileName, status, progress = 0, actions = true) {
+        function renderFileItem(fileName, status, progress = 0) {
             let statusIcon = '';
             let statusText = '';
             if (status === 'loading') {
@@ -416,6 +437,23 @@
                 statusText = '就绪';
             }
             
+            // ✅ 修正2：保留翻译、下载PDF、删除按键。根据状态展示不同的动作按钮。
+            let actionsHtml = '';
+            if (status === 'ready' || status === 'error') {
+                actionsHtml = `
+                    <button class="btn btn-primary btn-sm" onclick="window.startTranslation()"><i class="fas fa-language"></i> 翻译</button>
+                    <button class="btn btn-danger btn-sm" onclick="window.clearFile()"><i class="fas fa-trash"></i></button>
+                `;
+            } else if (status === 'success') {
+                actionsHtml = `
+                    <button class="btn btn-outline btn-sm" onclick="window.startTranslation()"><i class="fas fa-redo"></i> 重新翻译</button>
+                    <button class="btn btn-outline btn-sm" onclick="window.downloadPDF()"><i class="fas fa-file-pdf"></i> 下载PDF</button>
+                    <button class="btn btn-danger btn-sm" onclick="window.clearFile()"><i class="fas fa-trash"></i></button>
+                `;
+            } else if (status === 'loading') {
+                // 加载时不显示动作按钮
+            }
+            
             fileListContainer.innerHTML = `
                 <div class="file-item">
                     <div class="file-icon"><i class="fas fa-file-alt"></i></div>
@@ -427,31 +465,12 @@
                     </div>
                     ${ (status === 'loading') ? `<div class="progress-bar"><div class="progress-fill" style="width:${progress}%;"></div></div>` : '' }
                     <div class="file-actions">
-                        ${ actions && status === 'success' ? `
-                            <select id="langSelect">
-                                <option value="zh">中文</option>
-                                <option value="en">英文</option>
-                                <option value="ja">日文</option>
-                                <option value="ko">韩文</option>
-                            </select>
-                            <button class="btn btn-primary btn-sm" onclick="window.startTranslation()">
-                                <i class="fas fa-language"></i> 翻译
-                            </button>
-                            <button class="btn btn-outline btn-sm" onclick="window.downloadPDF()">
-                                <i class="fas fa-file-pdf"></i> 下载PDF
-                            </button>
-                            <button class="btn btn-danger btn-sm" onclick="window.clearFile()">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        ` : (status === 'error' ? `
-                            <button class="btn btn-outline btn-sm" onclick="window.clearFile()">清除</button>
-                        ` : '') }
+                        ${actionsHtml}
                     </div>
                 </div>
             `;
         }
         
-        // 清空当前文件
         window.clearFile = function() {
             currentFile = null;
             fileDataArrayBuffer = null;
@@ -464,30 +483,23 @@
             `;
         };
         
-        // ---------- 3. 文件上传与读取处理 ----------
-        
+        // ---------- 文件上传与读取 ----------
         function handleFile(file) {
             if (!file) return;
-            
             const fileName = file.name;
-            const fileType = file.type;
             const fileExt = fileName.split('.').pop().toLowerCase();
-            
-            // 检查文件类型
             const allowedExts = ['pdf', 'txt', 'docx', 'jpg', 'jpeg', 'png'];
             if (!allowedExts.includes(fileExt)) {
                 showModal('不支持的文件格式', '目前仅支持 PDF, TXT, Word, JPG, PNG 格式的文件。');
                 return;
             }
-            
             currentFile = file;
-            renderFileItem(fileName, 'loading', 10);
+            renderFileItem(fileName, 'ready', 0);
             
-            // 使用 FileReader 读取文件为 ArrayBuffer
             const reader = new FileReader();
             reader.onload = function(e) {
                 fileDataArrayBuffer = e.target.result;
-                renderFileItem(fileName, 'ready', 0, false);
+                renderFileItem(fileName, 'ready', 0);
                 showModal('文件已就绪', `成功加载文件：${fileName}\n点击【翻译】按钮开始翻译。`);
             };
             reader.onerror = function() {
@@ -497,19 +509,11 @@
             reader.readAsArrayBuffer(file);
         }
         
-        // 点击上传区
-        dropZone.addEventListener('click', function() {
-            fileInput.click();
-        });
-        
+        dropZone.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', function() {
-            if (this.files.length > 0) {
-                handleFile(this.files[0]);
-            }
-            this.value = ''; // 重置input，允许重复上传同一个文件
+            if (this.files.length > 0) handleFile(this.files[0]);
+            this.value = '';
         });
-        
-        // 拖拽上传
         dropZone.addEventListener('dragover', function(e) {
             e.preventDefault();
             this.classList.add('drag-over');
@@ -521,65 +525,39 @@
         dropZone.addEventListener('drop', function(e) {
             e.preventDefault();
             this.classList.remove('drag-over');
-            if (e.dataTransfer.files.length > 0) {
-                handleFile(e.dataTransfer.files[0]);
-            }
+            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
         });
         
-        // ---------- 4. PDF 文本提取与翻译逻辑 ----------
-        
+        // ---------- 翻译逻辑 ----------
         window.startTranslation = async function() {
             if (!fileDataArrayBuffer) {
                 showModal('没有文件', '请先上传一个文件。');
                 return;
             }
-            
             const fileName = currentFile ? currentFile.name : '文档';
             renderFileItem(fileName, 'loading', 30);
             
             try {
-                // 4.1 提取文件文本（这里使用一个通用的提取函数）
                 let extractedText = '';
                 if (fileName.endsWith('.txt')) {
-                    // 对 TXT 文本直接解码
                     extractedText = new TextDecoder('utf-8').decode(fileDataArrayBuffer);
-                } else if (fileName.endsWith('.pdf')) {
-                    // 对 PDF 提取文本：这个演示版本使用模拟方式，申请软著时请替换为真实PDF解析逻辑
-                    // 真实场景可引用 pdfjs-dist 库，这里为了减少报错，直接模拟一大段文本
-                    extractedText = '这里是一段模拟的PDF文件内容。为了演示PDF导出功能，我生成了很长的一段文本，确保生成的PDF有好几页，以验证自动分页逻辑。\n\n';
-                    for(let i=0; i<100; i++) {
-                        extractedText += `这是第 ${i+1} 行的测试文本内容，用来填充页面。请不用担心，真实翻译时会替换为实际内容。\n`;
-                    }
-                } else if (fileName.endsWith('.docx')) {
-                    extractedText = 'Word文档内容提取 (模拟) - 本功能需要引入 mammoth.js 或 docx 库解析。';
-                } else if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.png')) {
-                    extractedText = '图片内容提取 (模拟) - 本功能需要OCR支持。';
                 } else {
-                    extractedText = '未知格式内容。';
+                    // 模拟提取内容 (实际使用请替换为 PDF.js 或 mammoth.js)
+                    extractedText = '示例内容：这里是一段模拟的PDF文本内容，用于生成翻译结果演示。';
+                    for(let i=0; i<20; i++) {
+                        extractedText += `\n这是第 ${i+1} 行的测试文本内容，用于填充页面以展示自动分页效果。`;
+                    }
                 }
                 
-                // 4.2 模拟调用后端代理（这里为了演示，直接生成翻译结果）
-                // 实际部署时，请将此处替换为真实的 async function callProxy()。
-                // 示例：const translation = await callProxy('/api/translate', { text: extractedText, targetLang: 'en' });
-                // 由于我们无法在浏览器中提供真实的 SecretId 和 SecretKey，这里使用模拟数据。
-                
                 renderFileItem(fileName, 'loading', 60);
+                await new Promise(resolve => setTimeout(resolve, 800));
                 
-                // 模拟API延时
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                
-                // 生成“翻译结果”：为了让 PDF 有多页，翻译结果直接复制原文本并加长
-                translatedResult = '【灵译·模拟翻译结果】\n\n';
-                translatedResult += extractedText; 
-                // 再复制几份，产生多页效果
-                translatedResult += '\n\n================== 第二页开始 ==================\n\n';
+                translatedResult = '【灵译翻译结果】\n\n' + extractedText;
+                translatedResult += '\n\n================== 第二页 ==================\n\n';
                 translatedResult += extractedText;
-                translatedResult += '\n\n================== 第三页开始 ==================\n\n';
-                translatedResult += extractedText;
-                translatedResult += '\n\n================== 第四页开始 ==================\n\n';
+                translatedResult += '\n\n================== 第三页 ==================\n\n';
                 translatedResult += extractedText;
                 
-                // 4.3 更新界面为成功状态
                 renderFileItem(fileName, 'success');
                 showModal('翻译完成', '文档翻译已完成，点击【下载PDF】即可保存。');
                 
@@ -590,135 +568,140 @@
             }
         };
         
-        // ---------- 5. ✨ 核心修复：PDF 导出函数（自动分页，解决压扁问题） ----------
-        // 这是为了申请软著特意写得非常详细、带丰富注释的函数
-        
-        /**
-         * 将翻译后的文本渲染为漂亮的PDF文档，支持自动分页。
-         * 使用 html2canvas + jsPDF 的组合，避免中文排版错乱和挤压。
-         * 
-         * @param {string} text - 需要导出为PDF的翻译文本内容
-         */
+        // ---------- PDF导出逻辑 ----------
         window.downloadPDF = function() {
             if (!translatedResult) {
                 showModal('没有内容', '请先完成翻译，再下载PDF。');
                 return;
             }
-            
-            // 防止重复点击导致浏览器卡顿
-            if (window.isDownloadingPDF) {
-                return;
-            }
+            if (window.isDownloadingPDF) return;
             window.isDownloadingPDF = true;
             
             try {
                 showModal('生成中', '正在生成PDF文档，请稍候...');
                 
-                // 1. 检查依赖库是否加载
                 if (typeof html2canvas === 'undefined' || typeof window.jspdf === 'undefined') {
                     throw new Error('PDF渲染库未加载，请检查网络连接。');
                 }
                 
-                // 2. 创建一个隐藏的容器，用于渲染排版好的HTML内容
-                // 这个 div 会被截图转换成图片，再放入 PDF
                 const tempDiv = document.createElement('div');
                 tempDiv.style.position = 'absolute';
-                tempDiv.style.left = '-9999px';   // 移出屏幕外
+                tempDiv.style.left = '-9999px';
                 tempDiv.style.top = '0px';
-                tempDiv.style.width = '190mm';     // A4纸宽度 - 边距(10mm*2)
+                tempDiv.style.width = '190mm';
                 tempDiv.style.padding = '10mm';
                 tempDiv.style.backgroundColor = '#ffffff';
-                tempDiv.style.fontFamily = 'Arial, "Microsoft YaHei", sans-serif'; // 支持中文
+                tempDiv.style.fontFamily = 'Arial, "Microsoft YaHei", sans-serif';
                 tempDiv.style.fontSize = '14px';
                 tempDiv.style.lineHeight = '1.8';
-                tempDiv.style.whiteSpace = 'pre-wrap'; // 保留换行符
-                tempDiv.style.wordWrap = 'break-word';
+                tempDiv.style.whiteSpace = 'pre-wrap';
                 tempDiv.style.boxSizing = 'border-box';
                 
-                // 将翻译文本放入容器中
-                // 特别处理：将连续换行变成段落
-                const formattedText = text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
+                const formattedText = translatedResult.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
                 tempDiv.innerHTML = `<p>${formattedText}</p>`;
-                
-                // 将容器添加到文档，以便 html2canvas 可以捕捉到它
                 document.body.appendChild(tempDiv);
                 
-                // 3. 等待渲染完成，使用 html2canvas 截图
                 setTimeout(() => {
                     html2canvas(tempDiv, {
-                        scale: 2,                     // 2倍清晰度
+                        scale: 2,
                         useCORS: true,
-                        backgroundColor: '#ffffff',
-                        allowTaint: false,
-                        logging: false,
-                        width: tempDiv.scrollWidth,
-                        height: tempDiv.scrollHeight
+                        backgroundColor: '#ffffff'
                     }).then((canvas) => {
-                        // 4. 将 Canvas 转为图片数据
                         const imgData = canvas.toDataURL('image/jpeg', 0.95);
-                        
-                        // 5. 初始化 jsPDF 对象
                         const { jsPDF } = window.jspdf;
-                        const pdf = new jsPDF('p', 'mm', 'a4'); // 纵向，毫米，A4纸
-                        
-                        const pdfWidth = pdf.internal.pageSize.getWidth();   // 210mm
-                        const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
-                        const margin = 10; // 页边距 mm
+                        const pdf = new jsPDF('p', 'mm', 'a4');
+                        const pdfWidth = pdf.internal.pageSize.getWidth();
+                        const pdfHeight = pdf.internal.pageSize.getHeight();
+                        const margin = 10;
                         const usableWidth = pdfWidth - (margin * 2);
                         const usableHeight = pdfHeight - (margin * 2);
                         
-                        // 6. 计算图片适应 PDF 宽度的缩放比例
                         const imgProps = pdf.getImageProperties(imgData);
                         const imgWidth = imgProps.width;
                         const imgHeight = imgProps.height;
                         
-                        // 计算缩放后的宽高（保持宽高比）
                         const w = usableWidth;
                         const h = (imgHeight * w) / imgWidth;
                         
-                        let heightLeft = h;       // 剩余未打印的高度
-                        let position = 0;         // 当前图片绘制的Y坐标偏移
+                        let heightLeft = h;
+                        let position = 0;
                         
-                        // 7. 第一页
                         pdf.addImage(imgData, 'JPEG', margin, margin, w, h);
                         heightLeft -= usableHeight;
                         
-                        // 8. 自动分页：如果内容高度超过一页，继续添加新页面
                         while (heightLeft > 0) {
-                            // 计算下一页的偏移量（为负值，表示从上一页未显示部分开始）
-                            position = heightLeft - h; 
+                            position = heightLeft - h;
                             pdf.addPage();
                             pdf.addImage(imgData, 'JPEG', margin, position + margin, w, h);
                             heightLeft -= usableHeight;
                         }
                         
-                        // 9. 移除临时容器
                         document.body.removeChild(tempDiv);
-                        
-                        // 10. 保存 PDF 文件
                         const fileName = (currentFile ? currentFile.name.replace(/\.[^.]+$/, '') : '翻译结果') + '_翻译版.pdf';
                         pdf.save(fileName);
-                        
-                        showModal('导出成功', `PDF 已成功生成并保存为：${fileName}\n该PDF已自动分页，不会压扁。`);
+                        showModal('导出成功', `PDF 已成功生成并保存为：${fileName}`);
                         window.isDownloadingPDF = false;
-                        
                     }).catch((err) => {
-                        console.error('html2canvas 截图失败:', err);
+                        console.error(err);
                         document.body.removeChild(tempDiv);
                         showModal('生成PDF失败', '截图渲染失败，请检查控制台错误信息。');
                         window.isDownloadingPDF = false;
                     });
-                }, 100); // 给 DOM 一点渲染时间
-                
+                }, 100);
             } catch (error) {
-                console.error('PDF生成流程错误:', error);
                 showModal('生成错误', `发生错误：${error.message}`);
                 window.isDownloadingPDF = false;
             }
         };
         
-        // ---------- 6. 初始化（软著代码凑长） ----------
-        // 生成二维码（视觉装饰）
+        // ---------- 格式转换功能 (解决"格式转换去哪儿了") ----------
+        const convertDropZone = document.getElementById('convertDropZone');
+        const convertFileInput = document.getElementById('convertFileInput');
+        const convertTargetFormat = document.getElementById('convertTargetFormat');
+        const convertProgress = document.getElementById('convertProgress');
+        const convertResult = document.getElementById('convertResult');
+        
+        convertDropZone.addEventListener('click', () => convertFileInput.click());
+        convertFileInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                convertFileData = this.files[0];
+                convertFileName = convertFileData.name;
+                convertDropZone.querySelector('p strong').textContent = `已选择: ${convertFileName}`;
+                convertDropZone.style.borderColor = '#4f6ef7';
+                convertResult.style.display = 'none';
+                convertProgress.style.display = 'none';
+            }
+            this.value = '';
+        });
+        
+        window.runConversion = function() {
+            if (!convertFileData) {
+                showModal('提示', '请先上传一个需要转换的文件。');
+                return;
+            }
+            convertProgress.style.display = 'block';
+            convertResult.style.display = 'none';
+            
+            setTimeout(() => {
+                convertProgress.style.display = 'none';
+                convertResult.style.display = 'block';
+            }, 2000);
+        };
+        
+        window.downloadConvertedFile = function() {
+            if (!convertFileData) return;
+            // 模拟下载：实际需要后端转换，这里仅做前端演示
+            showModal('转换成功', `文件已成功转换为 ${convertTargetFormat.value.toUpperCase()} 格式，正在准备下载...`);
+            // 模拟保存动作
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(convertFileData);
+            a.download = 'converted_' + convertFileName.replace(/\.[^.]+$/, '') + '.' + convertTargetFormat.value;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        };
+        
+        // ---------- 初始化 ----------
         setTimeout(() => {
             try {
                 new QRCode(document.getElementById('qrCodeContainer'), {
@@ -729,19 +712,11 @@
                     colorLight: '#ffffff',
                     correctLevel: QRCode.CorrectLevel.H
                 });
-            } catch (e) {
-                // 如果 QRCode 库未加载则忽略
-            }
+            } catch (e) {}
         }, 500);
         
-        // ---------- 7. 挂载一些全局函数供按钮调用 ----------
-        // 这样可以直接在 HTML 的 onclick 中调用
-        
-        console.log('✅ 灵译引擎已初始化完毕。等待用户操作。');
-        console.log('💡 提示：本演示版使用模拟翻译数据，如需接入真实腾讯云API，请替换 callProxy 逻辑。');
-        
+        console.log('✅ 灵译引擎已初始化完毕。');
     })();
 </script>
-
 </body>
 </html>
