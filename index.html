@@ -575,7 +575,7 @@
       renderAll();
     }
 
-    // ==================== 最终剥洋葱版 callProxy ====================
+    // ==================== 终极纠错版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -584,50 +584,50 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 拿到最原始的响应文本
+    // 1. 拿到最原始的文本
     const rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 2. 尝试解析最外层的 JSON
+    // 2. 解析最外层的JSON
     let outerData;
     try {
       outerData = JSON.parse(rawText);
     } catch (e) {
-      // 如果最外层解析失败，说明后端返回了完全不对的东西，直接返回原文
-      return rawText; 
+      // 如果解析失败，直接把原始内容返回，这样你就可以看到问题所在
+      return `解析出错，后端原始数据：\n${rawText}`;
     }
 
-    // 3. 如果后端明确报错（code !== 0），直接返回错误信息
+    // 3. 检查code
     if (outerData.code !== 0) {
       return outerData.error || outerData.message || `后端错误码：${outerData.code}`;
     }
 
-    // 4. ✅ 核心步骤：提取 result 里的内容
-    // 你的后端返回的是：`{"code":0, "result":"{\"文本\":\"你好...\"}"}`
-    // 这里的 result 是字符串，需要再次解析
-    const innerStr = outerData.result || "";
+    // 4. 解析result里的内容
+    if (!outerData.result) {
+      return "后端返回成功但结果为空";
+    }
+
     let innerObj;
     try {
-      innerObj = JSON.parse(innerStr);
+      innerObj = JSON.parse(outerData.result);
     } catch (e) {
-      // 如果内层解析失败，说明 result 本身就是纯文本，直接返回它
-      return innerStr;
+      // 如果解析result失败，说明它可能不是标准的JSON，直接返回原始result
+      return outerData.result;
     }
 
-    // 5. ✅ 提取目标字段 "文本"，返回纯净的中文翻译
+    // 5. 提取“文本”字段
     if (innerObj.文本) {
-      return innerObj.文本; // 成功提取！
+      return innerObj.文本;
     }
     if (innerObj.text) {
-      return innerObj.text; // 兼容其他可能出现的字段名
+      return innerObj.text;
     }
 
-    // 6. 兜底：如果解析成功但没找到目标字段，返回解析后的对象（一般不会走到这里）
-    return JSON.stringify(innerObj);
+    return "解析成功但未找到文本字段";
 
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
-    return `前端出现错误：${err.message}`;
+    return `前端发生错误：${err.message}`;
   }
 }
       // 👇 重点：头部加了 async
@@ -683,7 +683,6 @@ async function extractText(file, ext) {
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
   
-  // 1. 创建临时 div 包裹文字
   const tempDiv = document.createElement('div');
   tempDiv.style.width = '170mm';
   tempDiv.style.padding = '15mm';
@@ -695,12 +694,10 @@ async function genPDF(text, name) {
 
   document.body.appendChild(tempDiv);
   
-  // 2. 使用 html2canvas 渲染长图（scale: 2 保证高清）
   const canvas = await html2canvas(tempDiv, { scale: 2 });
   document.body.removeChild(tempDiv);
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
 
-  // 3. 准备 PDF
   const doc = new jsPDF('p', 'mm', 'a4');
   const pdfWidth = doc.internal.pageSize.getWidth();
   const pdfHeight = doc.internal.pageSize.getHeight();
@@ -708,45 +705,26 @@ async function genPDF(text, name) {
   const contentWidth = pdfWidth - 2 * margin;
   const contentHeight = pdfHeight - 2 * margin;
 
-  // 4. 计算图片在 PDF 里的比例
   const ratio = Math.min(contentWidth / canvas.width, contentHeight / canvas.height);
   const imgWidth = canvas.width * ratio;
   const imgHeight = canvas.height * ratio;
 
-  // 5. 分页循环（确保每一页都有内容）
   let heightLeft = imgHeight;
   let position = 0;
 
   while (heightLeft > 0) {
-    // 如果不是第一页，添加新页
-    if (position > 0) {
-      doc.addPage();
-    }
-
-    // 计算当前页能显示的高度
+    if (position > 0) doc.addPage();
     const currentHeight = Math.min(heightLeft, contentHeight);
     
-    // 裁剪 canvas 生成当前页的图片
     const pageCanvas = document.createElement('canvas');
     pageCanvas.width = canvas.width;
     pageCanvas.height = currentHeight / ratio;
     const ctx = pageCanvas.getContext('2d');
+    ctx.drawImage(canvas, 0, position / ratio, canvas.width, pageCanvas.height, 0, 0, canvas.width, pageCanvas.height);
     
-    // 从整张图中剪裁出当前页需要的部分
-    ctx.drawImage(
-      canvas, 
-      0, position / ratio, 
-      canvas.width, pageCanvas.height, 
-      0, 0, 
-      canvas.width, pageCanvas.height
-    );
-
     const pageImgData = pageCanvas.toDataURL('image/jpeg', 1.0);
-
-    // 将图片添加到 PDF 当前页
     doc.addImage(pageImgData, 'JPEG', margin, margin, contentWidth, currentHeight);
 
-    // 更新剩余高度和已处理位置
     heightLeft -= currentHeight;
     position += currentHeight;
   }
