@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
@@ -574,35 +575,46 @@
       renderAll();
     }
 
-    // ==================== 暴力显示版 callProxy ====================
+    // ==================== 最终解析版 callProxy ====================
 async function callProxy(text, target) {
-  const res = await fetch(API_PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, target })
-  });
-
-  // 1. 获取原始文本
-  const rawText = await res.text();
-  
-  // 2. 直接弹窗显示原始内容
-  alert(`👀 后端返回的原始内容是:\n\n${rawText}`);
-
-  console.log("=== 后端返回的原始内容 ===", rawText);
-
-  // 3. 尝试解析一下，如果失败就直接返回空
   try {
-    const data = JSON.parse(rawText);
-    // 如果解析成功，但缺少 code，也弹窗提醒
-    if (data.code !== 0) {
-      alert(`⚠️ 后端返回了非0状态码或缺少code: ${JSON.stringify(data)}`);
+    const res = await fetch(API_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, target })
+    });
+
+    const rawText = await res.text();
+    console.log("=== 后端返回的原始内容 ===", rawText);
+
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (e) {
+      throw new Error(`后端返回不是 JSON: ${rawText.substring(0, 100)}...`);
     }
-    // 返回空字符串，保证页面不崩溃
-    return "";
-  } catch (e) {
-    // 解析失败，说明返回的不是 JSON
-    alert(`❌ 后端返回的不是 JSON: ${rawText}`);
-    return "";
+
+    if (data.code !== 0) {
+      throw new Error(data.error || data.message || `未知错误 (Code: ${data.code})`);
+    }
+
+    // 👇 核心：提取嵌套在 result 里的中文文本
+    let finalResult = data.result || '';
+    try {
+      const inner = JSON.parse(finalResult);
+      // 注意：这里必须是 "文本"（中文引号），因为后端返回的是 {"文本":"..."}
+      if (inner.文本) finalResult = inner.文本;
+      else if (inner.text) finalResult = inner.text;
+    } catch (e) {
+      // 如果解析失败，说明 finalResult 本身就是纯文本
+    }
+
+    return finalResult;
+
+  } catch (err) {
+    console.error("callProxy 捕获错误:", err);
+    alert("DEBUG: 真实错误信息 -> " + err.message);
+    throw new Error(err.message || '翻译接口错误');
   }
 }
       // 👇 重点：头部加了 async
@@ -656,32 +668,36 @@ async function extractText(file, ext) {
 
     async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
   
-  // 如果文本为空，直接返回一个提示 PDF
-  if (!text || text.trim() === '') {
-    doc.text("暂无内容", 20, 20);
-    return { blob: doc.output('blob'), filename: `${name}.pdf` };
-  }
+  // 1. 创建一个临时的 div 来包裹文字
+  const tempDiv = document.createElement('div');
+  // 设置宽度和样式，确保文本换行
+  tempDiv.style.width = '530px'; 
+  tempDiv.style.padding = '20px';
+  tempDiv.style.fontSize = '14px';
+  tempDiv.style.fontFamily = 'sans-serif';
+  tempDiv.style.lineHeight = '1.6';
+  tempDiv.style.color = '#000';
+  tempDiv.innerText = text || '暂无内容';
 
-  const maxW = doc.internal.pageSize.getWidth() - 40;
-  const pageH = doc.internal.pageSize.getHeight();
-  let y = 20; // 起始 Y 坐标
+  // 2. 把 div 添加到 body 并隐藏（用于计算）
+  document.body.appendChild(tempDiv);
   
-  doc.setFontSize(12);
+  // 3. 使用 html2canvas 把 div 渲染成图片
+  const canvas = await html2canvas(tempDiv);
   
-  // 将长文本根据页面宽度自动分行
-  const lines = doc.splitTextToSize(text, maxW);
-  
-  // 逐行写入 PDF，如果超过页面高度则自动换页
-  for (let i = 0; i < lines.length; i++) {
-    if (y > pageH - 30) {
-      doc.addPage(); // 翻页
-      y = 20; // 重置 Y 坐标
-    }
-    doc.text(lines[i], 20, y);
-    y += 8; // 行间距
-  }
+  // 4. 移除临时 div
+  document.body.removeChild(tempDiv);
+
+  // 5. 将 canvas 转为图片数据
+  const imgData = canvas.toDataURL('image/jpeg', 1.0);
+
+  // 6. 生成 PDF（A4 纸）
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pdfWidth = doc.internal.pageSize.getWidth();
+  const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+  doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
 
   return { blob: doc.output('blob'), filename: `${name}.pdf` };
 }
