@@ -575,24 +575,57 @@
       renderAll();
     }
 
-    // ==================== 终极真相版 callProxy ====================
+    // ==================== 最终完美提取版 callProxy ====================
 async function callProxy(text, target) {
-  const res = await fetch(API_PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, target })
-  });
+  try {
+    const res = await fetch(API_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, target })
+    });
 
-  // 1. 直接获取原始文本，不做任何处理
-  const rawText = await res.text();
+    const rawText = await res.text();
+    console.log("=== 后端返回的原始内容 ===", rawText);
 
-  // 2. 弹窗强制显示后端返回的原始内容
-  alert(`🔍 后端返回的原始内容（无任何处理）:\n\n${rawText}`);
-  
-  console.log("=== 后端返回的原始内容 ===", rawText);
+    // 1. 尝试解析 JSON
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (e) {
+      throw new Error(`后端返回的内容不是有效的 JSON，内容: ${rawText.substring(0, 100)}...`);
+    }
 
-  // 3. 返回空字符串，确保页面不会崩溃
-  return "";
+    // 2. 检查成功状态
+    if (data.code !== 0) {
+      const errMsg = data.error || data.message || `未知错误 (Code: ${data.code})`;
+      throw new Error(errMsg);
+    }
+
+    // 3. 获取 result
+    let finalResult = data.result || '';
+
+    // 4. 尝试解析 result 里的嵌套 JSON，提取中文“文本”
+    // 注意：后端返回的结构是 `{"code":0, "result":"{\"文本\":\"中文翻译...\"}"}`
+    try {
+      const parsedInner = JSON.parse(finalResult);
+      if (parsedInner.文本) {
+        finalResult = parsedInner.文本; // ✅ 提取真正的翻译内容
+      } else if (parsedInner.text) {
+        finalResult = parsedInner.text; // 兼容其他格式
+      }
+    } catch (e) {
+      // 如果解析失败，说明 finalResult 本身就是纯文本，直接使用
+    }
+
+    // 5. 返回提取到的中文翻译（绝对防崩）
+    return finalResult || ''; 
+
+  } catch (err) {
+    console.error("callProxy 捕获错误:", err);
+    // 这里弹窗显示具体错误，方便你锁定问题
+    alert("DEBUG: 错误详情 -> " + err.message);
+    throw new Error(err.message || '翻译接口错误');
+  }
 }
       // 👇 重点：头部加了 async
 async function extractText(file, ext) {
