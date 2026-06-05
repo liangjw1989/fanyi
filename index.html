@@ -575,7 +575,7 @@
       renderAll();
     }
 
-    // ==================== 彻底根除 Code: undefined 版 ====================
+    // ==================== 完美提取版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -591,30 +591,34 @@ async function callProxy(text, target) {
     try {
       data = JSON.parse(rawText);
     } catch (e) {
-      // 如果不是 JSON，直接返回原文（或空）
       console.warn("后端返回的不是 JSON，返回原文或空");
       return rawText || "";
     }
 
-    // 🚀 核心修改：完全不再依赖 code 字段
-    // 如果后端崩溃返回空对象 {}，data.result 是 undefined，这里直接返回空字符串
+    // 🚀 核心修改：不管 code 如何，直接尝试提取 result 里的中文
     let finalResult = data.result || "";
 
     // 尝试解析 result 里的嵌套 JSON（提取 "文本"）
+    // 你的后端返回的结构是：{"code":0, "result":"{\"文本\":\"中文翻译...\"}"}
     try {
-      const parsedInner = JSON.parse(finalResult);
-      if (parsedInner.文本) finalResult = parsedInner.文本;
-      else if (parsedInner.text) finalResult = parsedInner.text;
+      // 如果 finalResult 看起来像是一个 JSON 字符串，就尝试解析它
+      if (typeof finalResult === 'string' && finalResult.trim().startsWith('{')) {
+        const parsedInner = JSON.parse(finalResult);
+        if (parsedInner.文本) {
+          finalResult = parsedInner.文本; // ✅ 提取真正的翻译内容
+        } else if (parsedInner.text) {
+          finalResult = parsedInner.text;
+        }
+      }
     } catch (e) {
-      // 如果解析失败，说明 finalResult 就是纯文本
+      // 如果解析失败，说明 finalResult 本身就是纯文本
     }
 
-    // 返回翻译文本，如果为空则返回空字符串
+    // 返回翻译文本
     return finalResult || ""; 
 
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
-    // 错误发生时，返回空字符串，确保页面不崩溃
     return "";
   }
 }
@@ -679,7 +683,8 @@ async function extractText(file, ext) {
   tempDiv.style.fontFamily = 'sans-serif';
   tempDiv.style.lineHeight = '1.6';
   tempDiv.style.color = '#000';
-  tempDiv.innerText = text || '暂无内容';
+  // ✅ 如果 text 为空，显示友好的提示
+  tempDiv.innerText = text || '翻译结果为空，请检查源文件或重试';
 
   // 2. 把 div 添加到 body 并隐藏（用于计算）
   document.body.appendChild(tempDiv);
