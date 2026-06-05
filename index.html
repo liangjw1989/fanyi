@@ -575,47 +575,24 @@
       renderAll();
     }
 
-    // ==================== 最终解析版 callProxy ====================
+    // ==================== 终极真相版 callProxy ====================
 async function callProxy(text, target) {
-  try {
-    const res = await fetch(API_PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, target })
-    });
+  const res = await fetch(API_PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, target })
+  });
 
-    const rawText = await res.text();
-    console.log("=== 后端返回的原始内容 ===", rawText);
+  // 1. 直接获取原始文本，不做任何处理
+  const rawText = await res.text();
 
-    let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch (e) {
-      throw new Error(`后端返回不是 JSON: ${rawText.substring(0, 100)}...`);
-    }
+  // 2. 弹窗强制显示后端返回的原始内容
+  alert(`🔍 后端返回的原始内容（无任何处理）:\n\n${rawText}`);
+  
+  console.log("=== 后端返回的原始内容 ===", rawText);
 
-    if (data.code !== 0) {
-      throw new Error(data.error || data.message || `未知错误 (Code: ${data.code})`);
-    }
-
-    // 👇 核心：提取嵌套在 result 里的中文文本
-    let finalResult = data.result || '';
-    try {
-      const inner = JSON.parse(finalResult);
-      // 注意：这里必须是 "文本"（中文引号），因为后端返回的是 {"文本":"..."}
-      if (inner.文本) finalResult = inner.文本;
-      else if (inner.text) finalResult = inner.text;
-    } catch (e) {
-      // 如果解析失败，说明 finalResult 本身就是纯文本
-    }
-
-    return finalResult;
-
-  } catch (err) {
-    console.error("callProxy 捕获错误:", err);
-    alert("DEBUG: 真实错误信息 -> " + err.message);
-    throw new Error(err.message || '翻译接口错误');
-  }
+  // 3. 返回空字符串，确保页面不会崩溃
+  return "";
 }
       // 👇 重点：头部加了 async
 async function extractText(file, ext) {
