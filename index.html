@@ -574,24 +574,51 @@
       renderAll();
     }
 
-    // ==================== 暴力查看版 callProxy ====================
+    // ==================== 最终解析版 callProxy ====================
 async function callProxy(text, target) {
-  const res = await fetch(API_PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, target })
-  });
+  try {
+    const res = await fetch(API_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, target })
+    });
 
-  // 直接获取原始文本，不做任何解析
-  const rawText = await res.text();
+    const rawText = await res.text();
+    console.log("=== 后端返回的原始内容 ===", rawText);
 
-  // 💡 最重要的一步：用弹窗显示后端返回的真实内容
-  alert("🔍 后端返回的原始内容: " + rawText);
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (e) {
+      throw new Error(`后端返回的不是 JSON，内容是: ${rawText.substring(0, 100)}...`);
+    }
 
-  console.log("=== 后端返回的原始内容 ===", rawText);
+    if (data.code !== 0) {
+      const errMsg = data.error || data.message || `未知错误 (Code: ${data.code})`;
+      throw new Error(errMsg);
+    }
 
-  // 返回一个空字符串，防止页面崩溃
-  return "";
+    // 🚀 重点：提取翻译文本
+    // 你的后端返回的是：`{"code":0, "result":"{\"文本\":\"中文翻译内容...\"}"}`
+    // 下面这步就是要把里面的 "中文翻译内容..." 取出来
+    let finalResult = data.result || '';
+    
+    // 解析嵌套的 JSON 字符串
+    try {
+      const parsedInner = JSON.parse(finalResult);
+      if (parsedInner.文本) finalResult = parsedInner.文本; // 提取“文本”字段
+      else if (parsedInner.text) finalResult = parsedInner.text;
+    } catch (e) {
+      // 如果不是嵌套 JSON，那它本身就是纯文本
+    }
+
+    return finalResult;
+
+  } catch (err) {
+    console.error("callProxy 捕获错误:", err);
+    alert("DEBUG: 真实错误信息 -> " + err.message);
+    throw new Error(err.message || '翻译接口错误');
+  }
 }
       // 👇 重点：头部加了 async
 async function extractText(file, ext) {
@@ -643,13 +670,36 @@ async function extractText(file, ext) {
     }
 
     async function genPDF(text, name) {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      const maxW = doc.internal.pageSize.getWidth() - 40;
-      doc.setFontSize(12);
-      doc.text(doc.splitTextToSize(text || '', maxW), 20, 20);
-      return { blob: doc.output('blob'), filename: `${name}.pdf` };
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  
+  // 如果文本为空，直接返回一个提示 PDF
+  if (!text || text.trim() === '') {
+    doc.text("暂无内容", 20, 20);
+    return { blob: doc.output('blob'), filename: `${name}.pdf` };
+  }
+
+  const maxW = doc.internal.pageSize.getWidth() - 40;
+  const pageH = doc.internal.pageSize.getHeight();
+  let y = 20; // 起始 Y 坐标
+  
+  doc.setFontSize(12);
+  
+  // 将长文本根据页面宽度自动分行
+  const lines = doc.splitTextToSize(text, maxW);
+  
+  // 逐行写入 PDF，如果超过页面高度则自动换页
+  for (let i = 0; i < lines.length; i++) {
+    if (y > pageH - 30) {
+      doc.addPage(); // 翻页
+      y = 20; // 重置 Y 坐标
     }
+    doc.text(lines[i], 20, y);
+    y += 8; // 行间距
+  }
+
+  return { blob: doc.output('blob'), filename: `${name}.pdf` };
+}
 
     async function genDOCX(text, name) {
       const { Document, Packer, Paragraph, TextRun } = docx;
