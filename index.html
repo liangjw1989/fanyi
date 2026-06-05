@@ -679,15 +679,15 @@ async function extractText(file, ext) {
       }
     }
 
-    // ==================== 高清多页版 genPDF（最终推荐） ====================
+    // ==================== 完美多页版 genPDF ====================
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
   
-  // 1. 创建一个临时 div 来包裹文字（必须是 SimSun 宋体）
+  // 1. 创建一个临时 div 来包裹文字（指定宋体，确保中文清晰）
   const tempDiv = document.createElement('div');
-  tempDiv.style.width = '170mm';     // 匹配 A4 纸的宽度
-  tempDiv.style.padding = '15mm';    // 页边距
-  tempDiv.style.fontSize = '14px';   // 字号
+  tempDiv.style.width = '170mm';     // 适配 A4
+  tempDiv.style.padding = '15mm';
+  tempDiv.style.fontSize = '14px';
   tempDiv.style.fontFamily = 'SimSun, serif'; // 必须指定中文字体
   tempDiv.style.lineHeight = '1.8';
   tempDiv.style.color = '#000';
@@ -695,31 +695,60 @@ async function genPDF(text, name) {
 
   document.body.appendChild(tempDiv);
   
-  // 2. 使用 html2canvas 渲染成图片（关键：scale: 2 让清晰度翻倍）
+  // 2. 使用 html2canvas 渲染整张长图（scale: 2 保证高清）
   const canvas = await html2canvas(tempDiv, { scale: 2 });
   document.body.removeChild(tempDiv);
-
-  // 3. 将图片转为数据
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
 
-  // 4. 开始处理 PDF
+  // 3. 设置 PDF
   const doc = new jsPDF('p', 'mm', 'a4');
   const pdfWidth = doc.internal.pageSize.getWidth();
   const pdfHeight = doc.internal.pageSize.getHeight();
-  const imgWidth = pdfWidth - 20; // 左右留白
-  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+  const margin = 10;
+  const contentWidth = pdfWidth - 2 * margin;
+  const contentHeight = pdfHeight - 2 * margin;
 
-  // 5. 自动分页逻辑（处理长文本）
-  const pageHeight = pdfHeight - 20;
+  // 4. 计算整张图片按比例缩放后放进 PDF 的尺寸
+  const ratio = Math.min(contentWidth / canvas.width, contentHeight / canvas.height);
+  const imgWidth = canvas.width * ratio;
+  const imgHeight = canvas.height * ratio;
+
+  // 5. 分页逻辑（解决后几页空白的问题！）
   let heightLeft = imgHeight;
-  let position = 10;
+  let position = 0; // 当前已处理的图片高度
 
   while (heightLeft > 0) {
-    if (position > 10) doc.addPage();
-    const currentPageHeight = Math.min(heightLeft, pageHeight);
-    doc.addImage(imgData, 'JPEG', 10, position, imgWidth, currentPageHeight);
-    heightLeft -= currentPageHeight;
-    position += currentPageHeight + 5;
+    // 如果是第二页及之后，添加新页
+    if (position > 0) {
+      doc.addPage();
+    }
+
+    // 计算当前页能显示的图片片段高度
+    const pageHeightPx = Math.min(heightLeft, contentHeight);
+
+    // 创建当前页对应的图片片段（关键步骤：裁剪）
+    const pageCanvas = document.createElement('canvas');
+    pageCanvas.width = canvas.width;
+    pageCanvas.height = pageHeightPx / ratio;
+    const ctx = pageCanvas.getContext('2d');
+    
+    // 从整张图中剪裁出当前页需要的部分
+    ctx.drawImage(
+      canvas, 
+      0, position / ratio,            // 源图片的起始位置
+      pageCanvas.width, pageCanvas.height, // 源图片的裁剪尺寸
+      0, 0,                           // 目标图片的起始位置
+      pageCanvas.width, pageCanvas.height  // 目标图片的尺寸
+    );
+
+    const pageData = pageCanvas.toDataURL('image/jpeg', 1.0);
+
+    // 将图片片段添加到 PDF 当前页
+    doc.addImage(pageData, 'JPEG', margin, margin, contentWidth, pageHeightPx);
+
+    // 更新剩余高度和已处理位置
+    heightLeft -= pageHeightPx;
+    position += pageHeightPx;
   }
 
   return { blob: doc.output('blob'), filename: `${name}.pdf` };
