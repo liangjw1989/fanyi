@@ -684,7 +684,8 @@ async function extractText(file, ext) {
   tempDiv.style.lineHeight = '1.6';
   tempDiv.style.color = '#000';
   // ✅ 如果 text 为空，显示友好的提示
-  tempDiv.innerText = text || '翻译结果为空，请检查源文件或重试';
+  // 这里把 text 的内容原样打印出来，不管是空字符串，还是 JSON 字符串
+tempDiv.innerText = text ? text : '(空)';
 
   // 2. 把 div 添加到 body 并隐藏（用于计算）
   document.body.appendChild(tempDiv);
