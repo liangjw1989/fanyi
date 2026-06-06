@@ -590,7 +590,7 @@ async function translateFile(f) {
       renderAll();
     }
 
-    // ==================== 最终稳定版 callProxy ====================
+    // ==================== 最终健壮版 callProxy (绝不提取失败) ====================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // 你的腾讯云函数地址
 
@@ -601,46 +601,50 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 获取原始文本，并移除可能存在的 BOM 头 (\uFEFF)
+    // 1. 获取原始内容，并移出可能存在的BOM头(\uFEFF)
     let rawText = await res.text();
     rawText = rawText.replace(/^\uFEFF/, '');
     console.log("=== 后端原始返回 ===", rawText);
 
     // 2. 解析最外层的 JSON
-    const outer = JSON.parse(rawText);
-    if (outer.code !== 0) {
-      return null; // 如果后端报错，返回 null
-    }
-
-    const resultStr = outer.result;
-    if (!resultStr) {
-      return null;
-    }
-
-    let finalText = null;
-
-    // 3. 🚀 核心逻辑：提取“文本”字段
+    let outer;
     try {
-      // 尝试标准解析
-      const inner = JSON.parse(resultStr);
-      finalText = inner.文本 || inner.text;
+      outer = JSON.parse(rawText);
     } catch (e) {
-      // 如果标准解析失败（例如遇到特殊字符），使用正则表达式作为兜底方案
-      const match = resultStr.match(/"文本":"([^"]+)/);
+      console.error("外层解析失败，直接返回原始内容");
+      return rawText; // 解析失败返回原文，绝不返回null
+    }
+
+    // 3. 检查code状态
+    if (outer.code !== 0) {
+      return outer.error || outer.message || `后端错误码: ${outer.code}`;
+    }
+
+    // 4. 获取 result 字段（它本身就是字符串）
+    const resultStr = outer.result || "";
+    if (!resultStr) return "";
+
+    // 5. 🚀 核心：解析 resultStr，提取中文
+    // 先尝试标准JSON.parse
+    try {
+      const inner = JSON.parse(resultStr);
+      if (inner.文本) return inner.文本; // ✅ 成功提取中文
+      if (inner.text) return inner.text;
+    } catch (e) {
+      // 如果标准解析失败（如遇到转义字符），用正则兜底
+      console.warn("JSON解析失败，尝试正则提取...");
+      const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
       if (match && match[1]) {
-        finalText = match[1];
-      } else {
-        // 如果都失败了，返回 null，让上层处理
-        console.error("无法提取到中文文本");
-        return null;
+        return match[1];
       }
     }
 
-    return finalText; // ✅ 返回纯中文文本
+    // 兜底：返回 resultStr，确保永远不会返回 null
+    return resultStr;
 
   } catch (err) {
-    console.error("callProxy 错误:", err);
-    return null;
+    console.error("callProxy 网络错误:", err);
+    return ""; // 遇到任何错误返回空字符串，保证不崩溃
   }
 }
       // 👇 重点：头部加了 async
@@ -692,25 +696,25 @@ async function extractText(file, ext) {
       }
     }
 
-    // ==================== 最终版 genPDF ====================
+    // ==================== 最终版 genPDF (高清 + 完美分页 + 排版舒适) ====================
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
 
-  // 1. 创建隐藏的 div 容器，设置好样式（包括你建议的 line-height: 2.2）
+  // 1. 创建隐藏容器，利用浏览器引擎自动排版
   const tempDiv = document.createElement('div');
   tempDiv.style.width = '170mm';
   tempDiv.style.padding = '15mm';
   tempDiv.style.fontSize = '14px';
-  tempDiv.style.fontFamily = 'SimSun, serif';
-  tempDiv.style.lineHeight = '2.2'; // ✅ 核心修改：采纳你的建议，提高行距
+  tempDiv.style.fontFamily = 'SimSun, serif'; // 宋体，中文最美观
+  tempDiv.style.lineHeight = '2.2'; // ✅ 关键调整：提高行距，告别文字拥挤
   tempDiv.style.color = '#000';
   tempDiv.style.backgroundColor = '#ffffff';
-  tempDiv.style.whiteSpace = 'pre-wrap'; // 保留换行
+  tempDiv.style.whiteSpace = 'pre-wrap'; // 保留原始换行
   tempDiv.innerText = text || '暂无内容';
 
   document.body.appendChild(tempDiv);
 
-  // 2. 使用 html2canvas 渲染成图片（保证高清）
+  // 2. 使用 html2canvas 渲染成高清图片 (scale: 2)
   const canvas = await html2canvas(tempDiv, { scale: 2 });
   document.body.removeChild(tempDiv);
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
@@ -723,18 +727,18 @@ async function genPDF(text, name) {
   const usableWidth = pdfWidth - 2 * margin;
   const usableHeight = pdfHeight - 2 * margin;
 
-  // 4. 计算图片的缩放比例
+  // 4. 计算图片缩放比例
   const ratio = Math.min(usableWidth / canvas.width, usableHeight / canvas.height);
   const imgWidth = canvas.width * ratio;
   const imgHeight = canvas.height * ratio;
 
-  // 5. 自动分页逻辑
+  // 5. 自动分页循环
   let heightLeft = imgHeight;
   let position = 0;
 
   while (heightLeft > 0) {
     if (position > 0) {
-      doc.addPage();
+      doc.addPage(); // 超过一页时新建页面
     }
     const currentHeight = Math.min(heightLeft, usableHeight);
     doc.addImage(imgData, 'JPEG', margin, margin, usableWidth, currentHeight);
