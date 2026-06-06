@@ -552,14 +552,15 @@ async function translateFile(f) {
     if (!text.trim()) throw new Error('没有文字');
     f.extractedText = text; f.status='translating'; f.progress=0; renderAll();
 
-    // ✅ 调用上面的 callProxy，拿到纯净的中文文本
+    // ✅ 调用 callProxy，拿到纯净的中文文本
     const translated = await callProxy(text, f.targetLang);
 
-    // ✅ 检查是否拿到有效结果 (正则版返回的不会是 null)
+    // ✅ 检查是否拿到有效结果
     if (!translated) {
       throw new Error('翻译服务暂时不可用，请检查后端');
     }
 
+    // ✅ 这里直接赋值，不需要再 JSON.parse
     f.translatedText = translated;
 
     // 生成 PDF
@@ -590,7 +591,7 @@ async function translateFile(f) {
       renderAll();
     }
 
-    // ==================== 最终正则提取版 callProxy（绝对不会输出undefined） ====================
+    // ==================== 最终纯净版 callProxy ====================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // 你的腾讯云函数地址
 
@@ -601,41 +602,52 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 获取原始响应内容
+    // 1. 获取原始内容，并移除可能存在的 BOM 头 (\uFEFF)
     let rawText = await res.text();
+    rawText = rawText.replace(/^\uFEFF/, '');
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 2. 移除可能存在的 BOM 头 (\uFEFF)，防止 JSON.parse 解析失败
-    rawText = rawText.replace(/^\uFEFF/, '');
-
-    // 🚀 3. 核心修改：直接使用正则表达式提取 "文本" 字段的内容
-    // 目标格式： {"code":0,"result":"{\"文本\":\"学术编辑：特里·D...\"}"}
-    // 正则逻辑：匹配 "文本":" 后面的内容，直到遇到下一个引号 "
-    const match = rawText.match(/"文本":"([^"]+)/);
-    
-    if (match && match[1]) {
-      // ✅ 成功提取到纯净的中文翻译！
-      console.log("✅ 正则提取成功:", match[1]);
-      return match[1];
-    }
-
-    // 4. 如果正则没匹配到（比如后端格式变了），再尝试用 JSON.parse 兜底
+    // 2. 解析最外层的 JSON
+    let outer;
     try {
-      const outer = JSON.parse(rawText);
-      if (outer.code === 0 && outer.result) {
-        const inner = JSON.parse(outer.result);
-        if (inner.文本) return inner.文本;
-        if (inner.text) return inner.text;
-      }
-      return rawText;
+      outer = JSON.parse(rawText);
     } catch (e) {
-      // 如果 JSON.parse 也失败，就直接返回原始内容
-      return rawText;
+      // 如果解析失败，返回空字符串
+      return "";
     }
+
+    // 3. 检查 code 状态
+    if (outer.code !== 0) {
+      return "";
+    }
+
+    // 4. 获取 result 字段（它本身就是字符串）
+    const resultStr = outer.result || "";
+    if (!resultStr) return "";
+
+    // 5. 核心提取逻辑：尝试解析 resultStr 中的 "文本"
+    let finalText = "";
+    try {
+      const inner = JSON.parse(resultStr);
+      if (inner.文本) {
+        finalText = inner.文本;
+      } else if (inner.text) {
+        finalText = inner.text;
+      }
+    } catch (e) {
+      // 如果解析失败，可能 resultStr 本身就是纯文本，直接使用
+      finalText = resultStr;
+    }
+
+    // 6. 清理转义字符，让 PDF 显示更干净
+    // 这一步可以移除多余的 \n 和 \"
+    finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
+
+    return finalText; // ✅ 返回纯净的中文文本
 
   } catch (err) {
     console.error("callProxy 网络错误:", err);
-    return ""; // 发生任何错误，返回空字符串，绝不返回 undefined
+    return ""; // 遇到任何错误返回空字符串
   }
 }
       // 👇 重点：头部加了 async
