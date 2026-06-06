@@ -600,58 +600,46 @@ const { blob, filename } = await genPDF(translated, f.name);
     });
 
     let rawText = await res.text();
-    console.log("=== 后端原始返回 ===", rawText);
-
-    // 1. 去除可能存在的 BOM 头
+    // 去除 BOM 头
     rawText = rawText.replace(/^\uFEFF/, '');
 
-    // 2. 万能提取策略 (尝试不同方法，直到成功)
-    let finalText = "";
-
-    // === 方法一：直接从 JSON 对象中提取 ===
+    // ==== 核心修正：双层 JSON 解析 ====
     try {
-      const data = JSON.parse(rawText);
+      // 第一层解析
+      const outerData = JSON.parse(rawText);
       
-      // 处理可能存在的层级：data -> result -> 文本
-      // 或 data -> 文本
-      if (data.result && data.result.文本) {
-        finalText = data.result.文本;
-      } else if (data.文本) {
-        finalText = data.文本;
-      } else if (data.data && data.data.文本) {
-        finalText = data.data.文本;
+      if (outerData.code === 0 && outerData.result) {
+        let innerText = "";
+        
+        // 判断 result 是字符串还是对象
+        if (typeof outerData.result === 'string') {
+          // 是字符串，说明需要第二次解析（你的情况正是这样）
+          const innerData = JSON.parse(outerData.result);
+          innerText = innerData.文本;
+        } else if (typeof outerData.result === 'object') {
+          // 已经是对象，直接取
+          innerText = outerData.result.文本;
+        }
+
+        // 清理换行符和转义引号（非常重要，决定了 PDF 能否正常分页）
+        if (innerText) {
+          innerText = innerText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
+          return innerText;
+        }
       }
       
-      if (finalText) {
-        // 清理转义符
-        finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
-        console.log("✅ 方法一 (JSON解析) 提取成功!");
-        return finalText;
-      }
+      // 如果格式不对，抛出错误进入兜底
+      throw new Error("格式不匹配");
+
     } catch (e) {
-      // JSON解析失败，继续尝试其他方法
+      // 兜底：如果真的解析不了，就返回原始 JSON 以供查看，不要返回空字符串
+      console.error("解析彻底失败，返回原始数据");
+      return "【解析错误-原始数据】\n" + rawText.substring(0, 500);
     }
-
-    // === 方法二：暴力正则匹配 (无论 JSON 怎么嵌套，直接找 "文本":"内容" ) ===
-    // 这个正则能匹配 "文本":"内容" 或 \"文本\":\"内容\"
-    // 并且能处理内容中包含转义引号的情况
-    const match = rawText.match(/(["'])?文本(["'])?\s*:\s*(["'])?([^"']+?)(?=\\?["']\s*,|\s*})/);
-    if (match && match[4]) {
-      finalText = match[4];
-      // 清理转义符
-      finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
-      console.log("✅ 方法二 (暴力正则) 提取成功!");
-      return finalText;
-    }
-
-    // === 方法三：最笨但最有效的兜底 (适用于任何包含 "文本" 二字的字符串) ===
-    // 如果所有方法都失败，直接返回原始数据并加上错误提示，保证程序不崩
-    console.error("❌ 所有解析方法都失败了，返回原始数据作为提示");
-    return "【解析失败 - 原始数据如下】\n" + rawText.substring(0, 500) + "...";
 
   } catch (err) {
-    console.error("❌ callProxy 网络或严重错误:", err);
-    return "【网络错误或后端无法访问】";
+    console.error("callProxy 网络错误:", err);
+    return "【网络请求错误】";
   }
 }
       // 👇 重点：头部加了 async
@@ -704,54 +692,82 @@ async function extractText(file, ext) {
     }
 
     // ======================== genPDF 强制换行版 ========================
-async function genPDF(text, name) {
+  async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
 
   // 1. 准备 HTML 容器
   const tempDiv = document.createElement('div');
-  tempDiv.style.width = '170mm';
+  tempDiv.style.width = '180mm';
   tempDiv.style.padding = '10mm';
   tempDiv.style.fontSize = '14px';
   tempDiv.style.fontFamily = 'SimSun, serif';
-  tempDiv.style.lineHeight = '2.0';         // 行距
+  tempDiv.style.lineHeight = '1.8';
   tempDiv.style.color = '#000';
   tempDiv.style.backgroundColor = '#ffffff';
-  tempDiv.style.whiteSpace = 'pre-wrap';    // 保留换行
-  tempDiv.style.wordBreak = 'break-all';    // ✅ 强制断行（防止长文本压扁）
+  
+  // ✅ 核心：保留换行符，让浏览器自动处理换行
+  tempDiv.style.whiteSpace = 'pre-wrap'; 
+  tempDiv.style.wordWrap = 'break-word';
+  
   tempDiv.innerText = text || '暂无内容';
 
   document.body.appendChild(tempDiv);
 
-  // 2. 截图
+  // 2. 渲染截图 (scale: 2 保证清晰)
   const canvas = await html2canvas(tempDiv, { scale: 2, useCORS: true });
   document.body.removeChild(tempDiv);
+  
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
+  const { width: imgWidthPx, height: imgHeightPx } = canvas;
 
   // 3. 初始化 PDF
   const doc = new jsPDF('p', 'mm', 'a4');
-  const pdfWidth = doc.internal.pageSize.getWidth();
-  const pdfHeight = doc.internal.pageSize.getHeight();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 10;
-  const usableWidth = pdfWidth - 2 * margin;
-  const usableHeight = pdfHeight - 2 * margin;
+  const usableWidth = pageWidth - 2 * margin;
+  const usableHeight = pageHeight - 2 * margin;
 
-  // 4. 计算图片缩放比例
-  const ratio = Math.min(usableWidth / canvas.width, usableHeight / canvas.height);
-  const imgWidth = canvas.width * ratio;
-  const imgHeight = canvas.height * ratio;
+  // 4. 计算缩放比例
+  // 图片宽/高全部按比例缩放，以适应 PDF 宽度
+  const scale = usableWidth / imgWidthPx; 
+  const imgHeightScaled = imgHeightPx * scale;
 
-  // 5. 分页循环（裁剪）
+  // 5. 自动分页循环 (裁剪法)
   let currentY = 0;
-  while (currentY < imgHeight) {
-    if (currentY > 0) {
+  let pageNum = 0;
+
+  while (currentY < imgHeightScaled) {
+    // 除第一页外，其余都需要 addPage
+    if (pageNum > 0) {
       doc.addPage();
     }
-    const drawHeight = Math.min(imgHeight - currentY, usableHeight);
-    const cropY = currentY / ratio; 
-    const cropH = drawHeight / ratio;
+
+    // 计算当前页能容纳的高度
+    const remainingHeight = imgHeightScaled - currentY;
+    const drawHeight = Math.min(remainingHeight, usableHeight);
     
-    doc.addImage(imgData, 'JPEG', margin, margin, usableWidth, drawHeight, undefined, undefined, 0, cropY, usableWidth / ratio, cropH);
+    // 计算在原始图片上的裁剪位置 (像素)
+    const cropY = currentY / scale;
+    const cropH = drawHeight / scale;
+
+    doc.addImage(
+      imgData, 
+      'JPEG', 
+      margin, 
+      margin, 
+      usableWidth, 
+      drawHeight, 
+      undefined, 
+      undefined, 
+      0, 
+      cropY, 
+      imgWidthPx, 
+      cropH
+    );
+
     currentY += drawHeight;
+    pageNum++;
   }
 
   return { blob: doc.output('blob'), filename: `${name}.pdf` };
