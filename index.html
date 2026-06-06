@@ -590,7 +590,7 @@ async function translateFile(f) {
       renderAll();
     }
 
-    // ==================== 最终修复版 callProxy (双保险) ====================
+    // ==================== 最终稳定版 callProxy ====================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // 你的腾讯云函数地址
 
@@ -601,51 +601,46 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 获取原始内容，移除可能存在的 BOM 头 (EF BB BF)
+    // 1. 获取原始文本，并移除可能存在的 BOM 头 (\uFEFF)
     let rawText = await res.text();
-    rawText = rawText.replace(/^\uFEFF/, '').trim();
+    rawText = rawText.replace(/^\uFEFF/, '');
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 2. 先尝试解析最外层的 JSON
-    let outer;
-    try {
-      outer = JSON.parse(rawText);
-    } catch (e) {
-      // 如果外层解析失败，说明后端返回的格式完全不对
-      return rawText;
-    }
-
-    // 3. 检查 code 字段
-    if (outer.code === undefined) {
-      return rawText;
-    }
+    // 2. 解析最外层的 JSON
+    const outer = JSON.parse(rawText);
     if (outer.code !== 0) {
-      return outer.error || outer.message || `后端错误码：${outer.code}`;
+      return null; // 如果后端报错，返回 null
     }
 
-    // 4. 拿到 result 字段 (它是一个 JSON 字符串)
-    const resultStr = outer.result || "";
-    if (!resultStr) return "";
+    const resultStr = outer.result;
+    if (!resultStr) {
+      return null;
+    }
 
-    // 5. 核心提取逻辑：先尝试 JSON.parse
+    let finalText = null;
+
+    // 3. 🚀 核心逻辑：提取“文本”字段
     try {
+      // 尝试标准解析
       const inner = JSON.parse(resultStr);
-      if (inner.文本) return inner.文本;
-      if (inner.text) return inner.text;
-      return resultStr;
+      finalText = inner.文本 || inner.text;
     } catch (e) {
-      // 6. 如果 JSON.parse 失败，用正则表达式作为备份
-      console.warn("内层JSON解析失败，尝试正则提取...");
-      const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
+      // 如果标准解析失败（例如遇到特殊字符），使用正则表达式作为兜底方案
+      const match = resultStr.match(/"文本":"([^"]+)/);
       if (match && match[1]) {
-        return match[1];
+        finalText = match[1];
+      } else {
+        // 如果都失败了，返回 null，让上层处理
+        console.error("无法提取到中文文本");
+        return null;
       }
     }
 
-    return resultStr;
+    return finalText; // ✅ 返回纯中文文本
+
   } catch (err) {
-    console.error("callProxy 网络错误:", err);
-    return "";
+    console.error("callProxy 错误:", err);
+    return null;
   }
 }
       // 👇 重点：头部加了 async
@@ -697,38 +692,38 @@ async function extractText(file, ext) {
       }
     }
 
-    // ==================== 稳定版 genPDF (图像渲染，完美分页) ====================
+    // ==================== 最终版 genPDF ====================
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
 
-  // 1. 创建一个临时的 div 容器，利用浏览器引擎进行排版
+  // 1. 创建隐藏的 div 容器，设置好样式（包括你建议的 line-height: 2.2）
   const tempDiv = document.createElement('div');
-  tempDiv.style.width = '190mm';
-  tempDiv.style.padding = '10mm';
+  tempDiv.style.width = '170mm';
+  tempDiv.style.padding = '15mm';
   tempDiv.style.fontSize = '14px';
-  tempDiv.style.fontFamily = 'SimSun, serif'; // 指定宋体，渲染中文
-  tempDiv.style.lineHeight = '1.8';
+  tempDiv.style.fontFamily = 'SimSun, serif';
+  tempDiv.style.lineHeight = '2.2'; // ✅ 核心修改：采纳你的建议，提高行距
   tempDiv.style.color = '#000';
   tempDiv.style.backgroundColor = '#ffffff';
-  tempDiv.style.whiteSpace = 'pre-wrap'; // 保留换行和空格
+  tempDiv.style.whiteSpace = 'pre-wrap'; // 保留换行
   tempDiv.innerText = text || '暂无内容';
 
   document.body.appendChild(tempDiv);
 
-  // 2. 使用 html2canvas 渲染成图片 (scale: 2 保证清晰)
+  // 2. 使用 html2canvas 渲染成图片（保证高清）
   const canvas = await html2canvas(tempDiv, { scale: 2 });
   document.body.removeChild(tempDiv);
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
 
   // 3. 初始化 PDF
-  const pdf = new jsPDF('p', 'mm', 'a4');
-  const pdfWidth = pdf.internal.pageSize.getWidth();
-  const pdfHeight = pdf.internal.pageSize.getHeight();
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pdfWidth = doc.internal.pageSize.getWidth();
+  const pdfHeight = doc.internal.pageSize.getHeight();
   const margin = 10;
   const usableWidth = pdfWidth - 2 * margin;
   const usableHeight = pdfHeight - 2 * margin;
 
-  // 4. 计算图片缩放比例
+  // 4. 计算图片的缩放比例
   const ratio = Math.min(usableWidth / canvas.width, usableHeight / canvas.height);
   const imgWidth = canvas.width * ratio;
   const imgHeight = canvas.height * ratio;
@@ -738,14 +733,16 @@ async function genPDF(text, name) {
   let position = 0;
 
   while (heightLeft > 0) {
-    if (position > 0) pdf.addPage();
+    if (position > 0) {
+      doc.addPage();
+    }
     const currentHeight = Math.min(heightLeft, usableHeight);
-    pdf.addImage(imgData, 'JPEG', margin, margin, usableWidth, currentHeight);
+    doc.addImage(imgData, 'JPEG', margin, margin, usableWidth, currentHeight);
     heightLeft -= usableHeight;
     position += usableHeight;
   }
 
-  return { blob: pdf.output('blob'), filename: `${name}.pdf` };
+  return { blob: doc.output('blob'), filename: `${name}.pdf` };
 }
 
     async function genDOCX(text, name) {
