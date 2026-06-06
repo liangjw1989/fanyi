@@ -589,7 +589,7 @@ const { blob, filename } = await genPDF(translated, f.name);
       renderAll();
     }
 
-    // ======================== 终极稳定版 callProxy (永不返回 JSON) ========================
+    // ======================== callProxy 稳定提取版 ========================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
 
@@ -603,52 +603,37 @@ async function callProxy(text, target) {
     let rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 1. 去除 BOM 头
+    // 去除 BOM 头
     rawText = rawText.replace(/^\uFEFF/, '');
 
-    // 2. 使用正则提取 "文本":"..." 之间的内容（最稳妥的方法）
-    // 这个正则专门匹配你的后端返回格式： \"文本\":\"学术编辑...\"
-    const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
-    
-    if (match && match[1]) {
-      // ✅ 提取成功！清理转义字符
-      let finalText = match[1];
-      finalText = finalText.replace(/\\n/g, '\n');  // 把 \n 转成真正的换行
-      finalText = finalText.replace(/\\\"/g, '"');  // 把 \" 转成 "
-      
-      console.log("✅ 提取到的纯净文本:", finalText.substring(0, 100) + "...");
-      return finalText;
-    }
-
-    // 3. 如果正则失败，尝试二次 JSON.parse（备用方案）
+    // 1. 使用 JSON.parse 提取
     try {
-      const first = JSON.parse(rawText);
-      if (first.code === 0 && first.result) {
-        // 如果 result 是字符串，再解析一次
-        if (typeof first.result === 'string') {
-          const second = JSON.parse(first.result);
-          if (second.文本) {
-            let finalText = second.文本;
-            finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
-            return finalText;
-          }
-        } else if (first.result.文本) {
-          let finalText = first.result.文本;
-          finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
-          return finalText;
-        }
+      const data = JSON.parse(rawText);
+      // 检查结构是否包含 文本
+      if (data.code === 0 && data.result && data.result.文本) {
+        let finalText = data.result.文本;
+        // ✅ 清理转义符（最关键的一步，防止PDF被压扁）
+        finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
+        console.log("✅ 提取成功！文本长度:", finalText.length);
+        return finalText;
+      } else {
+        throw new Error("后端返回格式不匹配");
       }
     } catch (e) {
-      // 解析失败，继续往下
+      // 2. 如果 JSON.parse 失败，使用最简单的正则匹配
+      // 这个正则匹配标准 JSON 里的 "文本":"内容"
+      const match = rawText.match(/"文本":"([^"]+)/);
+      if (match && match[1]) {
+        let finalText = match[1].replace(/\\n/g, '\n').replace(/\\\"/g, '"');
+        console.log("✅ 正则提取成功！");
+        return finalText;
+      }
+      throw new Error("解析彻底失败");
     }
 
-    // 4. 兜底：如果实在解析不出来，返回一个友好提示，而不是原始 JSON
-    console.error("❌ 解析彻底失败，无法提取文本");
-    return "【翻译解析失败，请检查后端返回格式】";
-
   } catch (err) {
-    console.error("callProxy 网络错误:", err);
-    return "【翻译请求网络错误】";
+    console.error("callProxy 错误:", err);
+    return "【翻译解析失败，请检查后端返回格式】";
   }
 }
       // 👇 重点：头部加了 async
@@ -700,21 +685,23 @@ async function extractText(file, ext) {
       }
     }
 
-    // ==================== 最终高清多页版 genPDF ====================
+    // ======================== genPDF 强制换行版 ========================
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
 
-  // 1. 排版渲染
+  // 1. 准备 HTML 容器
   const tempDiv = document.createElement('div');
   tempDiv.style.width = '170mm';
-  tempDiv.style.padding = '15mm';
+  tempDiv.style.padding = '10mm';
   tempDiv.style.fontSize = '14px';
   tempDiv.style.fontFamily = 'SimSun, serif';
-  tempDiv.style.lineHeight = '2.2';
+  tempDiv.style.lineHeight = '2.0';         // 行距
   tempDiv.style.color = '#000';
   tempDiv.style.backgroundColor = '#ffffff';
-  tempDiv.style.whiteSpace = 'pre-wrap';
+  tempDiv.style.whiteSpace = 'pre-wrap';    // 保留换行
+  tempDiv.style.wordBreak = 'break-all';    // ✅ 强制断行（防止长文本压扁）
   tempDiv.innerText = text || '暂无内容';
+
   document.body.appendChild(tempDiv);
 
   // 2. 截图
@@ -722,7 +709,7 @@ async function genPDF(text, name) {
   document.body.removeChild(tempDiv);
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
 
-  // 3. PDF 初始化
+  // 3. 初始化 PDF
   const doc = new jsPDF('p', 'mm', 'a4');
   const pdfWidth = doc.internal.pageSize.getWidth();
   const pdfHeight = doc.internal.pageSize.getHeight();
@@ -732,34 +719,20 @@ async function genPDF(text, name) {
 
   // 4. 计算图片缩放比例
   const ratio = Math.min(usableWidth / canvas.width, usableHeight / canvas.height);
-  // 对长图而言，ratio 可能很小，这里的 w/h 是 PDF 上显示的尺寸
-  const displayWidth = canvas.width * ratio;
-  const displayHeight = canvas.height * ratio;
+  const imgWidth = canvas.width * ratio;
+  const imgHeight = canvas.height * ratio;
 
+  // 5. 分页循环（裁剪）
   let currentY = 0;
-  
-  // 5. 智能分页循环 (JS PDF 自带图像裁剪功能)
-  while (currentY < displayHeight) {
+  while (currentY < imgHeight) {
     if (currentY > 0) {
       doc.addPage();
     }
-
-    // 计算当前页要绘制的高度（不能超过可用高度）
-    const drawHeight = Math.min(displayHeight - currentY, usableHeight);
-
-    // ✅ 核心：利用 jsPDF 的 cropX, cropY 参数，从原始长图中截取一部分
-    // 格式：addImage(imageData, format, x, y, w, h, alias, compression, rotation, cropX, cropY, cropW, cropH)
-    // 这里：cropX = 0，cropY = currentY / scale 之类的，但对 canvas 来说，crop 的坐标系和我们算出来的 displayHeight 的坐标系不一样。
-    // 更安全的方式：直接用 addImage 显示整张图，然后翻页。
-    
-    // 因为 `displayHeight` 可能很长。
-    // 下面的方法：只显示当前页能容纳的部分。
-    // 我们使用 `addImage` 的 `cropY` 和 `cropH` 来实现。
-    const cropY = (currentY / ratio); 
-    const cropH = (drawHeight / ratio);
+    const drawHeight = Math.min(imgHeight - currentY, usableHeight);
+    const cropY = currentY / ratio; 
+    const cropH = drawHeight / ratio;
     
     doc.addImage(imgData, 'JPEG', margin, margin, usableWidth, drawHeight, undefined, undefined, 0, cropY, usableWidth / ratio, cropH);
-
     currentY += drawHeight;
   }
 
