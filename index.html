@@ -585,9 +585,9 @@ async function translateFile(f) {
       renderAll();
     }
 
-    // ==================== 真实部署版 callProxy (核心修复) ====================
+    // ==================== 最终双重解析版 callProxy ====================
 async function callProxy(text, target) {
-  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // ⚠️ 请确保这是你腾讯云函数的真实 URL
+  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // 腾讯云函数地址
 
   try {
     const res = await fetch(backendUrl, {
@@ -596,44 +596,42 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 检查网络状态
-    if (!res.ok) {
-      let errorText = '';
-      try { errorText = await res.text(); } catch (e) {}
-      throw new Error(`网络错误 ${res.status}: ${errorText}`);
-    }
-
-    // 2. 拿到原始文本
+    // 1. 获取原始文本
     const rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 3. 解析最外层的 JSON
+    // 2. 第一层解析：解析最外层的 JSON
     const outer = JSON.parse(rawText);
+
+    // 3. 检查后端状态码
     if (outer.code !== 0) {
-      throw new Error(outer.error || outer.message || `后端错误码：${outer.code}`);
+      // 如果有错误信息，直接抛出
+      throw new Error(outer.error || outer.message || `后端错误码: ${outer.code}`);
     }
 
-    // 4. 拿到 result (它是一个 JSON 字符串，如 "{\"文本\":\"你好...\"}")
+    // 4. 获取 result（它实际上是一个 JSON 字符串，如 "{\"文本\":\"你好...\"}"）
     const resultStr = outer.result || "";
     if (!resultStr) return "";
 
-    // 5. ✅ 核心修复：解析 result 里的 JSON 字符串，提取 "文本"
+    // 5. ✅ 核心修复：第二层解析，提取出真正的“文本”
+    let finalResult = resultStr;
     try {
       const inner = JSON.parse(resultStr);
-      // 如果解析成功，直接返回中文翻译！
-      if (inner.文本) return inner.文本;
-      if (inner.text) return inner.text;
+      if (inner.文本) {
+        finalResult = inner.文本; // 成功提取中文！
+      } else if (inner.text) {
+        finalResult = inner.text;
+      }
     } catch (e) {
-      // 如果解析失败，说明 result 本身就是纯文本，直接返回
-      return resultStr;
+      // 如果解析失败，说明 result 本身就是纯文本，直接使用
     }
 
-    return resultStr; // 兜底返回
+    // 6. 返回纯净的中文翻译
+    return finalResult;
 
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
-    // 向上抛出错误，由调用函数（translateFile）处理
-    throw new Error(`翻译请求失败: ${err.message || '未知错误'}`);
+    throw new Error(err.message || '翻译请求失败');
   }
 }
       // 👇 重点：头部加了 async
