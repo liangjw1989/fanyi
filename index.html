@@ -544,22 +544,31 @@
       else await convertFile(f);
     }
 
-    async function translateFile(f) {
-      f.status='extracting'; f.progress=0; renderAll();
-      try {
-        const text = await extractText(f.file, f.ext);
-        if (!text.trim()) throw new Error('没有文字');
-        f.extractedText = text; f.status='translating'; f.progress=0; renderAll();
-        const translated = await callProxy(text, f.targetLang);
-        f.translatedText = translated;
-        const { blob, filename } = await generateOutput(translated, f.extractedText, f.fmt, f.name);
-        f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done';
-        state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
-        state.completed.push(f); addRecord(f);
-        showToast('翻译完成');
-      } catch(e) { f.status='error'; showToast(`翻译失败: ${e.message}`, true); }
-      renderAll();
-    }
+    // ==================== 修正版 translateFile (调用新版 callProxy) ====================
+async function translateFile(f) {
+  f.status='extracting'; f.progress=0; renderAll();
+  try {
+    // 1. 提取文档文字
+    const text = await extractText(f.file, f.ext);
+    if (!text.trim()) throw new Error('没有文字');
+    f.extractedText = text; f.status='translating'; f.progress=0; renderAll();
+
+    // 2. ✅ 调用上面修复好的 callProxy，传入纯文本和目标语言
+    const translated = await callProxy(text, f.targetLang);
+    f.translatedText = translated;
+
+    // 3. 生成最终 PDF
+    const { blob, filename } = await generateOutput(translated, f.extractedText, f.fmt, f.name);
+    f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done';
+    state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
+    state.completed.push(f); addRecord(f);
+    showToast('翻译完成');
+  } catch(e) {
+    f.status='error'; 
+    showToast(`翻译失败: ${e.message}`, true);
+  }
+  renderAll();
+}
 
     async function convertFile(f) {
       f.status='extracting'; f.progress=0; renderAll();
@@ -576,45 +585,55 @@
       renderAll();
     }
 
-    // ==================== 最终层层剥开版 callProxy ====================
+    // ==================== 真实部署版 callProxy (核心修复) ====================
 async function callProxy(text, target) {
+  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // ⚠️ 请确保这是你腾讯云函数的真实 URL
+
   try {
-    const res = await fetch(API_PROXY_URL, {
+    const res = await fetch(backendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, target })
     });
 
+    // 1. 检查网络状态
+    if (!res.ok) {
+      let errorText = '';
+      try { errorText = await res.text(); } catch (e) {}
+      throw new Error(`网络错误 ${res.status}: ${errorText}`);
+    }
+
+    // 2. 拿到原始文本
     const rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 1. 解析最外层的 JSON
+    // 3. 解析最外层的 JSON
     const outer = JSON.parse(rawText);
-    
-    // 2. 检查 code 状态
     if (outer.code !== 0) {
-      return outer.error || outer.message || `后端错误码：${outer.code}`;
+      throw new Error(outer.error || outer.message || `后端错误码：${outer.code}`);
     }
 
-    // 3. 获取 result 字段（它是个字符串，形如 "{\"文本\":\"你好\"}"）
+    // 4. 拿到 result (它是一个 JSON 字符串，如 "{\"文本\":\"你好...\"}")
     const resultStr = outer.result || "";
-    if (!resultStr) {
-      return "翻译结果为空";
+    if (!resultStr) return "";
+
+    // 5. ✅ 核心修复：解析 result 里的 JSON 字符串，提取 "文本"
+    try {
+      const inner = JSON.parse(resultStr);
+      // 如果解析成功，直接返回中文翻译！
+      if (inner.文本) return inner.文本;
+      if (inner.text) return inner.text;
+    } catch (e) {
+      // 如果解析失败，说明 result 本身就是纯文本，直接返回
+      return resultStr;
     }
 
-    // 4. ✅ 核心：解析 result 字符串，提取 "文本" 字段
-    const inner = JSON.parse(resultStr);
-    if (inner.文本) {
-      return inner.文本; // 成功拿到纯净中文
-    }
-    if (inner.text) {
-      return inner.text;
-    }
+    return resultStr; // 兜底返回
 
-    return resultStr; // 兜底
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
-    return `前端错误: ${err.message}`;
+    // 向上抛出错误，由调用函数（translateFile）处理
+    throw new Error(`翻译请求失败: ${err.message || '未知错误'}`);
   }
 }
       // 👇 重点：头部加了 async
