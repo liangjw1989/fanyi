@@ -587,7 +587,7 @@ async function translateFile(f) {
       renderAll();
     }
 
-    // ==================== 最终双层解析版 callProxy ====================
+    // ==================== 最终极稳定版 callProxy ====================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // 你的腾讯云函数地址
 
@@ -598,47 +598,31 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 获取原始内容，并移除可能存在的 BOM 头 (EF BB BF)
+    // 1. 获取原始响应内容
     let rawText = await res.text();
-    rawText = rawText.replace(/^\uFEFF/, '');
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 2. 第一层解析：解析最外层的 JSON
-    let outer;
-    try {
-      outer = JSON.parse(rawText);
-    } catch (e) {
-      return ""; // 解析失败，返回空字符串
+    // 2. 移除可能存在的 BOM 头 (EF BB BF)，防止解析出错
+    rawText = rawText.replace(/^\uFEFF/, '');
+
+    // 🚀 3. 核心修改：直接使用正则表达式提取 "文本" 字段的内容
+    // 目标格式： {"code":0,"result":"{\"文本\":\"学术编辑：特里·D...\"}"}
+    // 正则逻辑：匹配 "文本":" 后面的内容，直到遇到下一个引号 "
+    const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
+    
+    if (match && match[1]) {
+      // ✅ 成功提取到纯净的中文翻译！
+      console.log("✅ 正则提取成功:", match[1]);
+      // 顺便清理一下多余的转义符
+      return match[1].replace(/\\n/g, '\n').replace(/\\\"/g, '"');
     }
 
-    // 3. 检查后端状态
-    if (outer.code !== 0) {
-      return "";
-    }
-
-    // 4. 获取 result 字段（它本身是一个 JSON 字符串，如 "{\"文本\":\"你好\"}"）
-    const resultStr = outer.result || "";
-    if (!resultStr) return "";
-
-    // 5. ✅ 第二层解析：解析 result 字符串，提取 "文本"
-    let finalText = "";
-    try {
-      const inner = JSON.parse(resultStr);
-      if (inner.文本) {
-        finalText = inner.文本; // 成功提取中文！
-      } else if (inner.text) {
-        finalText = inner.text;
-      }
-    } catch (e) {
-      // 如果内层解析失败，说明 result 本身就是纯文本
-      finalText = resultStr;
-    }
-
-    return finalText; // ✅ 返回纯净的中文文本
+    // 4. 如果正则没匹配到，兜底返回空字符串
+    return "";
 
   } catch (err) {
     console.error("callProxy 网络错误:", err);
-    return ""; // 任何错误都返回空字符串
+    return "";
   }
 }
       // 👇 重点：头部加了 async
@@ -690,7 +674,7 @@ async function extractText(file, ext) {
       }
     }
 
-    // ==================== 最终版 genPDF (高清 + 完美分页 + 排版舒适) ====================
+    // ==================== 最终高清多页版 genPDF ====================
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
 
@@ -700,7 +684,7 @@ async function genPDF(text, name) {
   tempDiv.style.padding = '15mm';
   tempDiv.style.fontSize = '14px';
   tempDiv.style.fontFamily = 'SimSun, serif'; // 宋体，中文最美观
-  tempDiv.style.lineHeight = '2.2'; // ✅ 关键调整：提高行距，告别文字拥挤
+  tempDiv.style.lineHeight = '2.2'; // 行距舒适
   tempDiv.style.color = '#000';
   tempDiv.style.backgroundColor = '#ffffff';
   tempDiv.style.whiteSpace = 'pre-wrap'; // 保留原始换行
@@ -732,7 +716,7 @@ async function genPDF(text, name) {
 
   while (heightLeft > 0) {
     if (position > 0) {
-      doc.addPage(); // 超过一页时新建页面
+      doc.addPage();
     }
     const currentHeight = Math.min(heightLeft, usableHeight);
     doc.addImage(imgData, 'JPEG', margin, margin, usableWidth, currentHeight);
