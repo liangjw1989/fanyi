@@ -590,9 +590,9 @@ async function translateFile(f) {
       renderAll();
     }
 
-    // ==================== 最终版 callProxy (直接返回纯中文) ====================
+    // ==================== 最终清洗版 callProxy ====================
 async function callProxy(text, target) {
-  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
+  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // ⚠️ 请确保这是你腾讯云函数的真实 URL
 
   try {
     const res = await fetch(backendUrl, {
@@ -601,30 +601,35 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    const rawText = await res.text();
+    // 1. 拿到原始文本
+    let rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 1. 第一层解析：尝试解析最外层的 JSON
+    // 🔥 关键修复：如果包含 BOM (EF BB BF) 或其他不可见字符，先清洗掉
+    // 这一步能让 JSON.parse 稳定工作，不再因为奇怪字符报错
+    rawText = rawText.replace(/^\uFEFF/, '').trim();
+
+    // 2. 第一层解析：尝试解析最外层的 JSON
     let outer;
     try {
       outer = JSON.parse(rawText);
     } catch (e) {
-      // 解析失败，说明后端返回的不是标准 JSON，返回 null 让上层处理
+      // 如果解析失败，说明后端返回的不是标准 JSON，返回 null 让上层处理
       console.error("外层 JSON 解析失败:", e);
       return null;
     }
 
-    // 2. 检查 code 状态
-    if (outer.code !== 0) {
-      console.warn("后端返回错误码:", outer.code);
+    // 3. 检查 code 状态
+    if (typeof outer.code === 'undefined' || outer.code !== 0) {
+      console.warn("后端返回错误码或未定义，返回 null");
       return null;
     }
 
-    // 3. 获取 result（它是一个 JSON 字符串，如 "{\"文本\":\"你好\"}"）
+    // 4. 获取 result（它是一个 JSON 字符串，如 "{\"文本\":\"你好\"}"）
     const resultStr = outer.result || "";
     if (!resultStr) return "";
 
-    // 4. ✅ 核心修复：第二层解析，提取“文本”
+    // 5. ✅ 第二层解析：提取“文本”
     let finalResult = "";
     try {
       const inner = JSON.parse(resultStr);
