@@ -589,7 +589,7 @@ const { blob, filename } = await genPDF(translated, f.name);
       renderAll();
     }
 
-    // ======================== 最终极稳定版 callProxy ========================
+    // ======================== 终极稳定版 callProxy (永不返回 JSON) ========================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
 
@@ -600,70 +600,55 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 获取原始文本
     let rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 2. 去除可能存在的 BOM 头
+    // 1. 去除 BOM 头
     rawText = rawText.replace(/^\uFEFF/, '');
 
-    // 3. 核心：暴力 JSON 解析（专门针对你的多层级转义格式）
-    // 你的后端返回是： "{\"code\":0,\"result\":\"{\"文本\":\"...\"}\"}"
-    // 这种格式需要剥洋葱一样解析两层。
+    // 2. 使用正则提取 "文本":"..." 之间的内容（最稳妥的方法）
+    // 这个正则专门匹配你的后端返回格式： \"文本\":\"学术编辑...\"
+    const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
     
-    let finalText = "";
+    if (match && match[1]) {
+      // ✅ 提取成功！清理转义字符
+      let finalText = match[1];
+      finalText = finalText.replace(/\\n/g, '\n');  // 把 \n 转成真正的换行
+      finalText = finalText.replace(/\\\"/g, '"');  // 把 \" 转成 "
+      
+      console.log("✅ 提取到的纯净文本:", finalText.substring(0, 100) + "...");
+      return finalText;
+    }
 
-    // 第一层解析
+    // 3. 如果正则失败，尝试二次 JSON.parse（备用方案）
     try {
-      const firstParse = JSON.parse(rawText);
-      if (firstParse.code === 0) {
-        let resultData = firstParse.result;
-        // 如果 result 是字符串（第二层 JSON），继续解析
-        if (typeof resultData === 'string') {
-          try {
-            const secondParse = JSON.parse(resultData);
-            if (secondParse && secondParse.文本) {
-              finalText = secondParse.文本;
-            }
-          } catch (e2) {
-            // 如果第二层解析失败，尝试直接匹配
-            console.warn("第二层 JSON 解析失败，尝试正则兜底");
-            // 匹配 \"文本\":\"(内容)\"
-            const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
-            if (match && match[1]) {
-              finalText = match[1];
-            }
+      const first = JSON.parse(rawText);
+      if (first.code === 0 && first.result) {
+        // 如果 result 是字符串，再解析一次
+        if (typeof first.result === 'string') {
+          const second = JSON.parse(first.result);
+          if (second.文本) {
+            let finalText = second.文本;
+            finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
+            return finalText;
           }
-        } else if (resultData && resultData.文本) {
-          // 如果 result 已经是对象
-          finalText = resultData.文本;
+        } else if (first.result.文本) {
+          let finalText = first.result.文本;
+          finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
+          return finalText;
         }
       }
-    } catch (e1) {
-      // 如果第一层解析失败，直接使用正则作为兜底
-      console.warn("第一层 JSON 解析失败，尝试正则兜底");
-      const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
-      if (match && match[1]) {
-        finalText = match[1];
-      }
+    } catch (e) {
+      // 解析失败，继续往下
     }
 
-    // 4. 清理转义字符，让文章段落恢复正常
-    finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
-
-    // 5. 防空逻辑：如果提取失败，直接返回原始内容（避免 PDF 变“暂无内容”）
-    if (!finalText || finalText.trim() === "") {
-      console.warn("⚠️ 提取到的文本为空，返回原始文本作为兜底。");
-      return rawText; // 至少让 PDF 显示点什么，方便你排查
-    }
-
-    console.log("✅ 最终提取到的纯净文本:", finalText.substring(0, 100) + "...");
-    return finalText;
+    // 4. 兜底：如果实在解析不出来，返回一个友好提示，而不是原始 JSON
+    console.error("❌ 解析彻底失败，无法提取文本");
+    return "【翻译解析失败，请检查后端返回格式】";
 
   } catch (err) {
-    console.error("callProxy 严重错误:", err);
-    // 极端情况：连 fetch 都失败了，返回空字符串让 UI 提示
-    return "";
+    console.error("callProxy 网络错误:", err);
+    return "【翻译请求网络错误】";
   }
 }
       // 👇 重点：头部加了 async
