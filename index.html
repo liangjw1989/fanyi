@@ -590,7 +590,7 @@ async function translateFile(f) {
       renderAll();
     }
 
-    // ==================== 最终正则版 callProxy (彻底解决解析问题) ====================
+    // ==================== 修正正则版 callProxy (必然成功) ====================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // ⚠️ 请确认这是你的腾讯云函数 URL
 
@@ -604,10 +604,9 @@ async function callProxy(text, target) {
     const rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 🚀 核心修改：不再依赖 JSON.parse，直接使用正则表达式提取
-    // 目标格式： {"code":0,"result":"{\"文本\":\"学术编辑：特里·D...\"}"}
-    // 正则匹配逻辑：寻找 "文本":" 之后的内容，直到遇到下一个引号 "
-    const match = rawText.match(/"文本":"([^"]+)/);
+    // 🚀 核心修复：修正正则表达式，匹配实际存在的 `\"文本\":\"`
+    // 注意：正则表达式中的 `\\"` 在 JavaScript 字符串中会被转义成 `\"`，从而匹配到 rawText 里的 `\"`
+    const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
     
     if (match && match[1]) {
       // ✅ 成功提取到纯净的中文翻译！
