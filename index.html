@@ -589,8 +589,7 @@ const { blob, filename } = await genPDF(translated, f.name);
       renderAll();
     }
 
-    // ======================== callProxy 稳定提取版 ========================
-async function callProxy(text, target) {
+    async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
 
   try {
@@ -603,37 +602,56 @@ async function callProxy(text, target) {
     let rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 去除 BOM 头
+    // 1. 去除可能存在的 BOM 头
     rawText = rawText.replace(/^\uFEFF/, '');
 
-    // 1. 使用 JSON.parse 提取
+    // 2. 万能提取策略 (尝试不同方法，直到成功)
+    let finalText = "";
+
+    // === 方法一：直接从 JSON 对象中提取 ===
     try {
       const data = JSON.parse(rawText);
-      // 检查结构是否包含 文本
-      if (data.code === 0 && data.result && data.result.文本) {
-        let finalText = data.result.文本;
-        // ✅ 清理转义符（最关键的一步，防止PDF被压扁）
+      
+      // 处理可能存在的层级：data -> result -> 文本
+      // 或 data -> 文本
+      if (data.result && data.result.文本) {
+        finalText = data.result.文本;
+      } else if (data.文本) {
+        finalText = data.文本;
+      } else if (data.data && data.data.文本) {
+        finalText = data.data.文本;
+      }
+      
+      if (finalText) {
+        // 清理转义符
         finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
-        console.log("✅ 提取成功！文本长度:", finalText.length);
+        console.log("✅ 方法一 (JSON解析) 提取成功!");
         return finalText;
-      } else {
-        throw new Error("后端返回格式不匹配");
       }
     } catch (e) {
-      // 2. 如果 JSON.parse 失败，使用最简单的正则匹配
-      // 这个正则匹配标准 JSON 里的 "文本":"内容"
-      const match = rawText.match(/"文本":"([^"]+)/);
-      if (match && match[1]) {
-        let finalText = match[1].replace(/\\n/g, '\n').replace(/\\\"/g, '"');
-        console.log("✅ 正则提取成功！");
-        return finalText;
-      }
-      throw new Error("解析彻底失败");
+      // JSON解析失败，继续尝试其他方法
     }
 
+    // === 方法二：暴力正则匹配 (无论 JSON 怎么嵌套，直接找 "文本":"内容" ) ===
+    // 这个正则能匹配 "文本":"内容" 或 \"文本\":\"内容\"
+    // 并且能处理内容中包含转义引号的情况
+    const match = rawText.match(/(["'])?文本(["'])?\s*:\s*(["'])?([^"']+?)(?=\\?["']\s*,|\s*})/);
+    if (match && match[4]) {
+      finalText = match[4];
+      // 清理转义符
+      finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
+      console.log("✅ 方法二 (暴力正则) 提取成功!");
+      return finalText;
+    }
+
+    // === 方法三：最笨但最有效的兜底 (适用于任何包含 "文本" 二字的字符串) ===
+    // 如果所有方法都失败，直接返回原始数据并加上错误提示，保证程序不崩
+    console.error("❌ 所有解析方法都失败了，返回原始数据作为提示");
+    return "【解析失败 - 原始数据如下】\n" + rawText.substring(0, 500) + "...";
+
   } catch (err) {
-    console.error("callProxy 错误:", err);
-    return "【翻译解析失败，请检查后端返回格式】";
+    console.error("❌ callProxy 网络或严重错误:", err);
+    return "【网络错误或后端无法访问】";
   }
 }
       // 👇 重点：头部加了 async
