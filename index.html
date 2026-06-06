@@ -590,9 +590,9 @@ async function translateFile(f) {
       renderAll();
     }
 
-    // ==================== 最终稳定版 callProxy（修复空对象崩溃） ====================
+    // ==================== 最终确定版 callProxy (解决 BOM 头问题) ====================
 async function callProxy(text, target) {
-  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // 你的腾讯云函数地址
+  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // 你的腾讯云函数URL
 
   try {
     const res = await fetch(backendUrl, {
@@ -601,50 +601,50 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    const rawText = await res.text();
+    // 1. 获取原始返回内容
+    let rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 1. 第一层：尝试解析 JSON
+    // 🔥 关键修复：移除可能存在的 BOM 头 (\uFEFF)
+    // BOM 头有时候会导致 JSON.parse 解析失败，移除它就能解决你的“undefined”问题
+    rawText = rawText.replace(/^\uFEFF/, '');
+
+    // 2. 解析 JSON
     let outer;
     try {
       outer = JSON.parse(rawText);
     } catch (e) {
-      // 如果解析失败，直接把原始内容抛出来，方便定位
-      return `解析出错：后端返回的不是合法 JSON，内容如下：\n${rawText}`;
+      // 解析失败说明返回的内容根本不合法，直接返回原始内容
+      return `JSON解析错误：${rawText}`;
     }
 
-    // 2. 检查后端是否返回了空对象 {}，或者缺少 code
+    // 3. 检查状态码和合法性
     if (outer.code === undefined) {
-      // 如果缺少 code，说明后端崩溃了。直接返回原始内容，让你直接看到真相
-      return `后端返回的数据没有 "code" 字段！云函数很可能崩溃了。原始内容：${rawText}`;
+      return `后端数据缺少 code 字段。当前数据：${rawText}`;
     }
 
-    // 3. 如果 code 不为 0，说明业务出错
     if (outer.code !== 0) {
       return outer.error || outer.message || `后端错误码：${outer.code}`;
     }
 
-    // 4. 获取 result 字段（它是一个字符串）
+    // 4. 提取 result 并解析文本
     const resultStr = outer.result || "";
-    if (!resultStr) return "翻译结果为空";
+    if (!resultStr) return "";
 
-    // 5. ✅ 解析 result 字符串，提取 "文本" 字段
-    let finalText = "";
+    let finalText = resultStr;
     try {
       const inner = JSON.parse(resultStr);
-      if (inner.文本) finalText = inner.文本; // 提取中文
-      else if (inner.text) finalText = inner.text; // 兼容其他格式
-      else finalText = resultStr;
+      if (inner.文本) finalText = inner.文本;
+      else if (inner.text) finalText = inner.text;
     } catch (e) {
-      // 如果解析失败，说明 result 本身就是纯文本
-      finalText = resultStr;
+      // 如果内层解析失败，说明 result 本身就是纯文本
     }
 
-    return finalText; // 返回纯净的中文
+    return finalText; // 返回纯净的中文文本！
 
   } catch (err) {
     console.error("callProxy 网络错误:", err);
-    return ""; // 任何错误都返回空，防止应用崩溃
+    return ""; // 发生网络错误时返回空
   }
 }
       // 👇 重点：头部加了 async
