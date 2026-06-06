@@ -696,84 +696,84 @@ async function extractText(file, ext) {
       }
     }
 
-    // ==================== 最终完美版 genPDF (图二效果) ====================
+    // ==================== 终极稳定版 genPDF (搞定排版与分页) ====================
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
   
-  // 1. 创建临时 div 容器，完美复刻图二的排版样式
+  // 1. 创建一个临时的 div 容器来包裹文本
   const tempDiv = document.createElement('div');
-  tempDiv.style.width = '190mm';          // 匹配 A4 纸宽度
-  tempDiv.style.padding = '10mm';         // 页面边距
-  tempDiv.style.fontSize = '14px';        // 字号大小（跟图二一致）
-  tempDiv.style.fontFamily = 'SimSun, serif'; // 宋体，中文最美观
-  tempDiv.style.lineHeight = '1.8';       // 行间距
+  tempDiv.style.width = '170mm';          // A4纸宽度，留出边距
+  tempDiv.style.padding = '15mm';         // 页面边距
+  tempDiv.style.fontSize = '14px';        // 字号
+  tempDiv.style.fontFamily = 'SimSun, serif'; // 必须指定中文字体
+  tempDiv.style.lineHeight = '1.8';       // 行距
   tempDiv.style.color = '#000';
-  tempDiv.style.backgroundColor = '#ffffff';
-  tempDiv.style.whiteSpace = 'pre-wrap';  // 保留换行符，实现自动换行
+  tempDiv.style.backgroundColor = '#ffffff'; // 白底
   tempDiv.innerText = text || '暂无内容';
 
   document.body.appendChild(tempDiv);
   
-  // 2. 用 html2canvas 截图（scale: 2 保证文字高清）
-  const canvas = await html2canvas(tempDiv, {
-    scale: 2,
-    useCORS: true,
-    backgroundColor: '#ffffff'
-  });
+  // 2. 使用 html2canvas 将整个内容渲染成一张长图（scale: 2 保证高清晰度）
+  const canvas = await html2canvas(tempDiv, { scale: 2 });
   document.body.removeChild(tempDiv);
-  
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
 
-  // 3. 初始化 PDF
-  const pdf = new jsPDF('p', 'mm', 'a4');
-  const pdfWidth = pdf.internal.pageSize.getWidth();
-  const pdfHeight = pdf.internal.pageSize.getHeight();
+  // 3. 计算 PDF 的可用尺寸（毫米）
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pdfWidth = doc.internal.pageSize.getWidth();
+  const pdfHeight = doc.internal.pageSize.getHeight();
   const margin = 10;
   const usableWidth = pdfWidth - 2 * margin;
   const usableHeight = pdfHeight - 2 * margin;
 
-  // 4. 计算图片在 PDF 中的缩放比例
+  // 4. 计算图片的缩放比例
   const ratio = Math.min(usableWidth / canvas.width, usableHeight / canvas.height);
   const imgWidth = canvas.width * ratio;
   const imgHeight = canvas.height * ratio;
 
-  // 5. 自动分页逻辑（完全复刻你图二的效果）
-  let heightLeft = imgHeight;
+  // 5. 分页切割逻辑（绝对稳定，完美解决内容被切问题）
+  let totalHeight = imgHeight;
   let position = 0;
 
-  // 第一页
-  pdf.addImage(imgData, 'JPEG', margin, margin, usableWidth, Math.min(heightLeft, usableHeight));
-  heightLeft -= usableHeight;
+  while (totalHeight > 0) {
+    // 如果已经处理过一页，则添加新页
+    if (position > 0) {
+      doc.addPage();
+    }
 
-  // 如果内容超过一页，继续添加
-  while (heightLeft > 0) {
-    pdf.addPage();
+    // 计算当前页能显示的高度
+    const currentHeight = Math.min(totalHeight, usableHeight);
     
-    // 计算当前页需要显示的高度
-    const currentHeight = Math.min(heightLeft, usableHeight);
-    
-    // 为了最稳定的效果，我们裁剪 canvas 生成对应页的图片
+    // 计算在 canvas 上对应的像素高度
+    const cropHeightPx = currentHeight / ratio;
+
+    // 在内存中创建一个新的 canvas 来裁剪当前页的内容
     const pageCanvas = document.createElement('canvas');
     pageCanvas.width = canvas.width;
-    pageCanvas.height = currentHeight / ratio;
+    pageCanvas.height = cropHeightPx;
     const ctx = pageCanvas.getContext('2d');
     
-    // 从源图片中裁剪当前页对应的部分
+    // 从主图对应的位置精确切割
     ctx.drawImage(
       canvas,
-      0, (canvas.height - heightLeft), // 从下往上计算偏移量
-      canvas.width, pageCanvas.height,
+      0, position / ratio, // 源图片的裁剪起始位置（向下偏移）
+      canvas.width, cropHeightPx,
       0, 0,
-      canvas.width, pageCanvas.height
+      canvas.width, cropHeightPx
     );
-    
-    const pageImgData = pageCanvas.toDataURL('image/jpeg', 1.0);
-    pdf.addImage(pageImgData, 'JPEG', margin, margin, usableWidth, currentHeight);
 
-    heightLeft -= usableHeight;
+    // 将裁剪后的图片转为数据
+    const pageImgData = pageCanvas.toDataURL('image/jpeg', 1.0);
+
+    // 将图片添加到 PDF 页面
+    doc.addImage(pageImgData, 'JPEG', margin, margin, usableWidth, currentHeight);
+
+    // 更新剩余高度和处理位置
+    totalHeight -= currentHeight;
+    position += currentHeight;
   }
 
-  return { blob: pdf.output('blob'), filename: `${name}.pdf` };
+  return { blob: doc.output('blob'), filename: `${name}.pdf` };
 }
 
     async function genDOCX(text, name) {
