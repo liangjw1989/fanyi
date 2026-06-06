@@ -591,7 +591,7 @@ async function translateFile(f) {
       renderAll();
     }
 
-    // ==================== 最终正则提取版 callProxy ====================
+    // ==================== 最终双重解析版 callProxy ====================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // 你的腾讯云函数地址
 
@@ -605,19 +605,30 @@ async function callProxy(text, target) {
     const rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 🚀 核心修改：直接用正则表达式提取 "文本":"内容"
-    // 这个方法完全不依赖 JSON.parse，可以完美避开转义字符的坑
-    const match = rawText.match(/"文本":"([^"]+)/);
-    if (match && match[1]) {
-      return match[1]; // ✅ 直接返回纯净的中文翻译！
+    // 🚀 核心修改：直接使用 JSON.parse 解析双重结构
+    // 第一步：解析最外层的 JSON，拿到 code 和 result
+    const outer = JSON.parse(rawText);
+    if (outer.code !== 0) {
+      return outer.error || outer.message || '翻译服务异常';
     }
 
-    // 如果正则没匹配到，回退到原始数据（确保不返回 null）
-    return rawText || "";
+    // 第二步：解析 result 里的 JSON 字符串（它本身是一个字符串，如 "{\"文本\":\"你好\"}"）
+    const inner = JSON.parse(outer.result);
+
+    // 第三步：提取 "文本" 字段，返回纯净的中文翻译
+    if (inner.文本) {
+      return inner.文本; // ✅ 成功提取！
+    }
+    if (inner.text) {
+      return inner.text; // 兼容其他字段名
+    }
+
+    // 兜底：如果结构不符合预期，返回原始数据
+    return rawText;
 
   } catch (err) {
-    console.error("callProxy 网络错误:", err);
-    return ""; // 错误时返回空字符串，绝不返回 null
+    console.error("callProxy 解析错误:", err);
+    return ''; // 发生错误返回空，绝不抛出异常
   }
 }
       // 👇 重点：头部加了 async
