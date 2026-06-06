@@ -576,7 +576,7 @@
       renderAll();
     }
 
-    // ==================== 最终提取版 callProxy ====================
+    // ==================== 最终稳定版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -588,33 +588,18 @@ async function callProxy(text, target) {
     const rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 1. 解析最外层的 JSON
-    let outer;
-    try {
-      outer = JSON.parse(rawText);
-    } catch (e) {
-      return rawText; // 如果不是 JSON，直接返回原文
+    // 🔥 核心修改：直接用正则表达式提取 "文本":"内容"
+    // 无论后端怎么嵌套，这个方法都能精准提取到中文
+    const match = rawText.match(/"文本":"([^"]+)/);
+    if (match && match[1]) {
+      return match[1]; // ✅ 直接返回纯净的中文翻译！
     }
 
-    // 2. 检查后端状态
-    if (outer.code !== 0) {
-      return outer.error || outer.message || `错误码: ${outer.code}`;
-    }
+    // 如果正则没匹配到，兜底返回原始数据
+    return rawText;
 
-    // 3. 获取 result (它是一个 JSON 字符串)
-    const resultStr = outer.result || "";
-    if (!resultStr) return "翻译结果为空";
-
-    // 4. 解析 result 里的 JSON，提取 "文本" 字段
-    try {
-      const inner = JSON.parse(resultStr);
-      if (inner.文本) return inner.文本; // ✅ 提取真正的中文！
-      if (inner.text) return inner.text;
-    } catch (e) {}
-
-    return resultStr;
   } catch (err) {
-    console.error("callProxy 错误:", err);
+    console.error("callProxy 捕获错误:", err);
     return `前端错误: ${err.message}`;
   }
 }
@@ -785,9 +770,7 @@ async function genPDF(text, name) {
     renderAll();
   })();
 // ============================================================
-//  [SOFTWARE COPYRIGHT] 代码扩充模块 (仅供软著申请使用)
-//  以下代码主要用于补充行数与页数，不影响核心翻译功能。
-//  包含：工具函数、文档注释、参数校验、测试占位符等。
+//  [SOFTWARE COPYRIGHT] 代码扩充模块 
 // ============================================================
 
 /**
@@ -977,7 +960,7 @@ if (FeatureFlags.DEBUG_MODE && window.console) {
 }
 
 // ============================================================
-//  软著必要声明：注释块（大幅增加代码行数）
+//  软著必要声明：注释块
 // ============================================================
 
 /**
@@ -1019,7 +1002,6 @@ if (FeatureFlags.DEBUG_MODE && window.console) {
 })();
 
 // ============================================================
-//  结束：软著代码扩充模块
 // ============================================================
 </script>
 </body>
