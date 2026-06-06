@@ -590,9 +590,9 @@ async function translateFile(f) {
       renderAll();
     }
 
-    // ==================== 最终确定版 callProxy (解决 BOM 头问题) ====================
+    // ==================== 最终修复版 callProxy (双保险) ====================
 async function callProxy(text, target) {
-  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // 你的腾讯云函数URL
+  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // 你的腾讯云函数地址
 
   try {
     const res = await fetch(backendUrl, {
@@ -601,50 +601,51 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 获取原始返回内容
+    // 1. 获取原始内容，移除可能存在的 BOM 头 (EF BB BF)
     let rawText = await res.text();
+    rawText = rawText.replace(/^\uFEFF/, '').trim();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 🔥 关键修复：移除可能存在的 BOM 头 (\uFEFF)
-    // BOM 头有时候会导致 JSON.parse 解析失败，移除它就能解决你的“undefined”问题
-    rawText = rawText.replace(/^\uFEFF/, '');
-
-    // 2. 解析 JSON
+    // 2. 先尝试解析最外层的 JSON
     let outer;
     try {
       outer = JSON.parse(rawText);
     } catch (e) {
-      // 解析失败说明返回的内容根本不合法，直接返回原始内容
-      return `JSON解析错误：${rawText}`;
+      // 如果外层解析失败，说明后端返回的格式完全不对
+      return rawText;
     }
 
-    // 3. 检查状态码和合法性
+    // 3. 检查 code 字段
     if (outer.code === undefined) {
-      return `后端数据缺少 code 字段。当前数据：${rawText}`;
+      return rawText;
     }
-
     if (outer.code !== 0) {
       return outer.error || outer.message || `后端错误码：${outer.code}`;
     }
 
-    // 4. 提取 result 并解析文本
+    // 4. 拿到 result 字段 (它是一个 JSON 字符串)
     const resultStr = outer.result || "";
     if (!resultStr) return "";
 
-    let finalText = resultStr;
+    // 5. 核心提取逻辑：先尝试 JSON.parse
     try {
       const inner = JSON.parse(resultStr);
-      if (inner.文本) finalText = inner.文本;
-      else if (inner.text) finalText = inner.text;
+      if (inner.文本) return inner.文本;
+      if (inner.text) return inner.text;
+      return resultStr;
     } catch (e) {
-      // 如果内层解析失败，说明 result 本身就是纯文本
+      // 6. 如果 JSON.parse 失败，用正则表达式作为备份
+      console.warn("内层JSON解析失败，尝试正则提取...");
+      const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
+      if (match && match[1]) {
+        return match[1];
+      }
     }
 
-    return finalText; // 返回纯净的中文文本！
-
+    return resultStr;
   } catch (err) {
     console.error("callProxy 网络错误:", err);
-    return ""; // 发生网络错误时返回空
+    return "";
   }
 }
       // 👇 重点：头部加了 async
@@ -696,36 +697,55 @@ async function extractText(file, ext) {
       }
     }
 
-    // ==================== 最终版 genPDF (原生文本处理，稳定分页) ====================
+    // ==================== 稳定版 genPDF (图像渲染，完美分页) ====================
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF('p', 'mm', 'a4');
-  
-  // 设置页面边距和字体
-  const margin = 15; // 边距
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const maxWidth = pageWidth - 2 * margin; // 文本最大宽度
-  let y = margin; // 当前纵坐标
 
-  // 设置字体大小（如果预览时发现字体太小，可以改成 14 或 16）
-  doc.setFontSize(12);
+  // 1. 创建一个临时的 div 容器，利用浏览器引擎进行排版
+  const tempDiv = document.createElement('div');
+  tempDiv.style.width = '190mm';
+  tempDiv.style.padding = '10mm';
+  tempDiv.style.fontSize = '14px';
+  tempDiv.style.fontFamily = 'SimSun, serif'; // 指定宋体，渲染中文
+  tempDiv.style.lineHeight = '1.8';
+  tempDiv.style.color = '#000';
+  tempDiv.style.backgroundColor = '#ffffff';
+  tempDiv.style.whiteSpace = 'pre-wrap'; // 保留换行和空格
+  tempDiv.innerText = text || '暂无内容';
 
-  // 把长文本按页面宽度自动拆成行
-  const lines = doc.splitTextToSize(text, maxWidth);
+  document.body.appendChild(tempDiv);
 
-  // 逐行写入 PDF，并自动分页
-  for (let i = 0; i < lines.length; i++) {
-    // 判断当前行是否超过一页的底部（预留底部边距）
-    if (y > pageHeight - margin - 10) {
-      doc.addPage(); // 如果超过，新建一页
-      y = margin;    // 重置纵坐标
-    }
-    doc.text(lines[i], margin, y);
-    y += 8; // 换行间距（可根据需要微调）
+  // 2. 使用 html2canvas 渲染成图片 (scale: 2 保证清晰)
+  const canvas = await html2canvas(tempDiv, { scale: 2 });
+  document.body.removeChild(tempDiv);
+  const imgData = canvas.toDataURL('image/jpeg', 1.0);
+
+  // 3. 初始化 PDF
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const pdfHeight = pdf.internal.pageSize.getHeight();
+  const margin = 10;
+  const usableWidth = pdfWidth - 2 * margin;
+  const usableHeight = pdfHeight - 2 * margin;
+
+  // 4. 计算图片缩放比例
+  const ratio = Math.min(usableWidth / canvas.width, usableHeight / canvas.height);
+  const imgWidth = canvas.width * ratio;
+  const imgHeight = canvas.height * ratio;
+
+  // 5. 自动分页逻辑
+  let heightLeft = imgHeight;
+  let position = 0;
+
+  while (heightLeft > 0) {
+    if (position > 0) pdf.addPage();
+    const currentHeight = Math.min(heightLeft, usableHeight);
+    pdf.addImage(imgData, 'JPEG', margin, margin, usableWidth, currentHeight);
+    heightLeft -= usableHeight;
+    position += usableHeight;
   }
 
-  return { blob: doc.output('blob'), filename: `${name}.pdf` };
+  return { blob: pdf.output('blob'), filename: `${name}.pdf` };
 }
 
     async function genDOCX(text, name) {
