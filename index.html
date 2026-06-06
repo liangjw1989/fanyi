@@ -576,7 +576,7 @@
       renderAll();
     }
 
-    // ==================== 最终稳定版 callProxy ====================
+    // ==================== 最终层层剥开版 callProxy ====================
 async function callProxy(text, target) {
   try {
     const res = await fetch(API_PROXY_URL, {
@@ -588,16 +588,30 @@ async function callProxy(text, target) {
     const rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 🔥 核心修改：直接用正则表达式提取 "文本":"内容"
-    // 无论后端怎么嵌套，这个方法都能精准提取到中文
-    const match = rawText.match(/"文本":"([^"]+)/);
-    if (match && match[1]) {
-      return match[1]; // ✅ 直接返回纯净的中文翻译！
+    // 1. 解析最外层的 JSON
+    const outer = JSON.parse(rawText);
+    
+    // 2. 检查 code 状态
+    if (outer.code !== 0) {
+      return outer.error || outer.message || `后端错误码：${outer.code}`;
     }
 
-    // 如果正则没匹配到，兜底返回原始数据
-    return rawText;
+    // 3. 获取 result 字段（它是个字符串，形如 "{\"文本\":\"你好\"}"）
+    const resultStr = outer.result || "";
+    if (!resultStr) {
+      return "翻译结果为空";
+    }
 
+    // 4. ✅ 核心：解析 result 字符串，提取 "文本" 字段
+    const inner = JSON.parse(resultStr);
+    if (inner.文本) {
+      return inner.文本; // 成功拿到纯净中文
+    }
+    if (inner.text) {
+      return inner.text;
+    }
+
+    return resultStr; // 兜底
   } catch (err) {
     console.error("callProxy 捕获错误:", err);
     return `前端错误: ${err.message}`;
