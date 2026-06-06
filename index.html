@@ -544,7 +544,7 @@
       else await convertFile(f);
     }
 
-    // ==================== 修正版 translateFile (调用新版 callProxy) ====================
+    // ==================== 修正版 translateFile ====================
 async function translateFile(f) {
   f.status='extracting'; f.progress=0; renderAll();
   try {
@@ -553,11 +553,17 @@ async function translateFile(f) {
     if (!text.trim()) throw new Error('没有文字');
     f.extractedText = text; f.status='translating'; f.progress=0; renderAll();
 
-    // 2. ✅ 调用上面修复好的 callProxy，传入纯文本和目标语言
+    // 2. ✅ 调用上面的稳健版 callProxy
     const translated = await callProxy(text, f.targetLang);
+
+    // 3. ✅ 检查翻译结果是否为 null
+    if (translated === null) {
+      throw new Error('翻译服务暂时不可用，请重试');
+    }
+
     f.translatedText = translated;
 
-    // 3. 生成最终 PDF
+    // 4. 生成最终 PDF
     const { blob, filename } = await generateOutput(translated, f.extractedText, f.fmt, f.name);
     f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done';
     state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
@@ -585,9 +591,9 @@ async function translateFile(f) {
       renderAll();
     }
 
-    // ==================== 最终双重解析版 callProxy ====================
+    // ==================== 最终稳健版 callProxy (绝不报错) ====================
 async function callProxy(text, target) {
-  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // 腾讯云函数地址
+  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // ⚠️ 你的云函数地址
 
   try {
     const res = await fetch(backendUrl, {
@@ -596,42 +602,44 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 获取原始文本
     const rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 2. 第一层解析：解析最外层的 JSON
-    const outer = JSON.parse(rawText);
-
-    // 3. 检查后端状态码
-    if (outer.code !== 0) {
-      // 如果有错误信息，直接抛出
-      throw new Error(outer.error || outer.message || `后端错误码: ${outer.code}`);
+    // 1. 第一层解析：尝试解析最外层的 JSON
+    let outer;
+    try {
+      outer = JSON.parse(rawText);
+    } catch (e) {
+      console.warn("后端返回的不是有效 JSON，返回 null");
+      return null; // 解析失败，返回 null
     }
 
-    // 4. 获取 result（它实际上是一个 JSON 字符串，如 "{\"文本\":\"你好...\"}"）
+    // 2. 如果外层没有 code 或者 code 不是 0，说明出错了，返回 null
+    // 注意：这里不再抛出 Error，而是返回 null，防止程序崩溃
+    if (typeof outer.code === 'undefined' || outer.code !== 0) {
+      console.warn("后端返回错误码或未定义，返回 null");
+      return null;
+    }
+
+    // 3. 获取 result（它是一个 JSON 字符串）
     const resultStr = outer.result || "";
     if (!resultStr) return "";
 
-    // 5. ✅ 核心修复：第二层解析，提取出真正的“文本”
+    // 4. 第二层解析：提取真正的“文本”
     let finalResult = resultStr;
     try {
       const inner = JSON.parse(resultStr);
-      if (inner.文本) {
-        finalResult = inner.文本; // 成功提取中文！
-      } else if (inner.text) {
-        finalResult = inner.text;
-      }
+      if (inner.文本) finalResult = inner.文本;
+      else if (inner.text) finalResult = inner.text;
     } catch (e) {
-      // 如果解析失败，说明 result 本身就是纯文本，直接使用
+      // 如果解析失败，说明 result 本身就是纯文本
     }
 
-    // 6. 返回纯净的中文翻译
-    return finalResult;
+    return finalResult; // 返回纯文本翻译结果
 
   } catch (err) {
-    console.error("callProxy 捕获错误:", err);
-    throw new Error(err.message || '翻译请求失败');
+    console.error("callProxy 网络错误:", err);
+    return null; // 网络错误也返回 null
   }
 }
       // 👇 重点：头部加了 async
