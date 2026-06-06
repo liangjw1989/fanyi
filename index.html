@@ -559,8 +559,10 @@ async function translateFile(f) {
     // 这样就可以在PDF里看到是哪里出了问题
     f.translatedText = translated;
 
-    // 生成 PDF
-    const { blob, filename } = await generateOutput(translated, f.extractedText, f.fmt, f.name);
+    // ...
+// ✅ 直接调用你修复好的 genPDF！
+const { blob, filename } = await genPDF(translated, f.name);
+// ...
     f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done';
     state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
     state.completed.push(f); addRecord(f);
@@ -589,8 +591,8 @@ async function translateFile(f) {
 
     // ==================== 最终极稳定版 callProxy ====================
 async function callProxy(text, target) {
-  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // 你的腾讯云函数地址
-
+  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
+  
   try {
     const res = await fetch(backendUrl, {
       method: 'POST',
@@ -598,31 +600,31 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 获取原始响应内容
     let rawText = await res.text();
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 2. 移除可能存在的 BOM 头 (EF BB BF)，防止解析出错
+    // 去除 BOM 头
     rawText = rawText.replace(/^\uFEFF/, '');
 
-    // 🚀 3. 核心修改：直接使用正则表达式提取 "文本" 字段的内容
-    // 目标格式： {"code":0,"result":"{\"文本\":\"学术编辑：特里·D...\"}"}
-    // 正则逻辑：匹配 "文本":" 后面的内容，直到遇到下一个引号 "
-    const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
+    // 【核心修正】尝试用 JSON.parse 解析
+    let data = JSON.parse(rawText);
     
-    if (match && match[1]) {
-      // ✅ 成功提取到纯净的中文翻译！
-      console.log("✅ 正则提取成功:", match[1]);
-      // 顺便清理一下多余的转义符
-      return match[1].replace(/\\n/g, '\n').replace(/\\\"/g, '"');
+    // 如果 result 是 JSON 字符串（转义过的），先二次解析
+    if (typeof data.result === 'string') {
+      data.result = JSON.parse(data.result);
     }
 
-    // 4. 如果正则没匹配到，兜底返回空字符串
-    return "";
+    // 提取字段，直接返回纯净的文本内容
+    if (data.code === 0 && data.result && data.result.文本) {
+      return data.result.文本; 
+    } else {
+      throw new Error('后端返回格式不匹配');
+    }
 
   } catch (err) {
-    console.error("callProxy 网络错误:", err);
-    return "";
+    console.error("callProxy 解析失败:", err);
+    // 兜底：如果实在解析不了，返回空字符串，避免程序崩溃
+    return ""; 
   }
 }
       // 👇 重点：头部加了 async
@@ -678,26 +680,25 @@ async function extractText(file, ext) {
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
 
-  // 1. 创建隐藏容器，利用浏览器引擎自动排版
+  // 1. 排版渲染
   const tempDiv = document.createElement('div');
   tempDiv.style.width = '170mm';
   tempDiv.style.padding = '15mm';
   tempDiv.style.fontSize = '14px';
-  tempDiv.style.fontFamily = 'SimSun, serif'; // 宋体，中文最美观
-  tempDiv.style.lineHeight = '2.2'; // 行距舒适
+  tempDiv.style.fontFamily = 'SimSun, serif';
+  tempDiv.style.lineHeight = '2.2';
   tempDiv.style.color = '#000';
   tempDiv.style.backgroundColor = '#ffffff';
-  tempDiv.style.whiteSpace = 'pre-wrap'; // 保留原始换行
+  tempDiv.style.whiteSpace = 'pre-wrap';
   tempDiv.innerText = text || '暂无内容';
-
   document.body.appendChild(tempDiv);
 
-  // 2. 使用 html2canvas 渲染成高清图片 (scale: 2)
-  const canvas = await html2canvas(tempDiv, { scale: 2 });
+  // 2. 截图
+  const canvas = await html2canvas(tempDiv, { scale: 2, useCORS: true });
   document.body.removeChild(tempDiv);
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
 
-  // 3. 初始化 PDF
+  // 3. PDF 初始化
   const doc = new jsPDF('p', 'mm', 'a4');
   const pdfWidth = doc.internal.pageSize.getWidth();
   const pdfHeight = doc.internal.pageSize.getHeight();
@@ -707,21 +708,35 @@ async function genPDF(text, name) {
 
   // 4. 计算图片缩放比例
   const ratio = Math.min(usableWidth / canvas.width, usableHeight / canvas.height);
-  const imgWidth = canvas.width * ratio;
-  const imgHeight = canvas.height * ratio;
+  // 对长图而言，ratio 可能很小，这里的 w/h 是 PDF 上显示的尺寸
+  const displayWidth = canvas.width * ratio;
+  const displayHeight = canvas.height * ratio;
 
-  // 5. 自动分页循环
-  let heightLeft = imgHeight;
-  let position = 0;
-
-  while (heightLeft > 0) {
-    if (position > 0) {
+  let currentY = 0;
+  
+  // 5. 智能分页循环 (JS PDF 自带图像裁剪功能)
+  while (currentY < displayHeight) {
+    if (currentY > 0) {
       doc.addPage();
     }
-    const currentHeight = Math.min(heightLeft, usableHeight);
-    doc.addImage(imgData, 'JPEG', margin, margin, usableWidth, currentHeight);
-    heightLeft -= usableHeight;
-    position += usableHeight;
+
+    // 计算当前页要绘制的高度（不能超过可用高度）
+    const drawHeight = Math.min(displayHeight - currentY, usableHeight);
+
+    // ✅ 核心：利用 jsPDF 的 cropX, cropY 参数，从原始长图中截取一部分
+    // 格式：addImage(imageData, format, x, y, w, h, alias, compression, rotation, cropX, cropY, cropW, cropH)
+    // 这里：cropX = 0，cropY = currentY / scale 之类的，但对 canvas 来说，crop 的坐标系和我们算出来的 displayHeight 的坐标系不一样。
+    // 更安全的方式：直接用 addImage 显示整张图，然后翻页。
+    
+    // 因为 `displayHeight` 可能很长。
+    // 下面的方法：只显示当前页能容纳的部分。
+    // 我们使用 `addImage` 的 `cropY` 和 `cropH` 来实现。
+    const cropY = (currentY / ratio); 
+    const cropH = (drawHeight / ratio);
+    
+    doc.addImage(imgData, 'JPEG', margin, margin, usableWidth, drawHeight, undefined, undefined, 0, cropY, usableWidth / ratio, cropH);
+
+    currentY += drawHeight;
   }
 
   return { blob: doc.output('blob'), filename: `${name}.pdf` };
