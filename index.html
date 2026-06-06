@@ -696,81 +696,33 @@ async function extractText(file, ext) {
       }
     }
 
-    // ==================== 终极稳定版 genPDF (搞定排版与分页) ====================
+    // ==================== 最终版 genPDF (原生文本处理，稳定分页) ====================
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
-  
-  // 1. 创建一个临时的 div 容器来包裹文本
-  const tempDiv = document.createElement('div');
-  tempDiv.style.width = '170mm';          // A4纸宽度，留出边距
-  tempDiv.style.padding = '15mm';         // 页面边距
-  tempDiv.style.fontSize = '14px';        // 字号
-  tempDiv.style.fontFamily = 'SimSun, serif'; // 必须指定中文字体
-  tempDiv.style.lineHeight = '1.8';       // 行距
-  tempDiv.style.color = '#000';
-  tempDiv.style.backgroundColor = '#ffffff'; // 白底
-  tempDiv.innerText = text || '暂无内容';
-
-  document.body.appendChild(tempDiv);
-  
-  // 2. 使用 html2canvas 将整个内容渲染成一张长图（scale: 2 保证高清晰度）
-  const canvas = await html2canvas(tempDiv, { scale: 2 });
-  document.body.removeChild(tempDiv);
-  const imgData = canvas.toDataURL('image/jpeg', 1.0);
-
-  // 3. 计算 PDF 的可用尺寸（毫米）
   const doc = new jsPDF('p', 'mm', 'a4');
-  const pdfWidth = doc.internal.pageSize.getWidth();
-  const pdfHeight = doc.internal.pageSize.getHeight();
-  const margin = 10;
-  const usableWidth = pdfWidth - 2 * margin;
-  const usableHeight = pdfHeight - 2 * margin;
+  
+  // 设置页面边距和字体
+  const margin = 15; // 边距
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const maxWidth = pageWidth - 2 * margin; // 文本最大宽度
+  let y = margin; // 当前纵坐标
 
-  // 4. 计算图片的缩放比例
-  const ratio = Math.min(usableWidth / canvas.width, usableHeight / canvas.height);
-  const imgWidth = canvas.width * ratio;
-  const imgHeight = canvas.height * ratio;
+  // 设置字体大小（如果预览时发现字体太小，可以改成 14 或 16）
+  doc.setFontSize(12);
 
-  // 5. 分页切割逻辑（绝对稳定，完美解决内容被切问题）
-  let totalHeight = imgHeight;
-  let position = 0;
+  // 把长文本按页面宽度自动拆成行
+  const lines = doc.splitTextToSize(text, maxWidth);
 
-  while (totalHeight > 0) {
-    // 如果已经处理过一页，则添加新页
-    if (position > 0) {
-      doc.addPage();
+  // 逐行写入 PDF，并自动分页
+  for (let i = 0; i < lines.length; i++) {
+    // 判断当前行是否超过一页的底部（预留底部边距）
+    if (y > pageHeight - margin - 10) {
+      doc.addPage(); // 如果超过，新建一页
+      y = margin;    // 重置纵坐标
     }
-
-    // 计算当前页能显示的高度
-    const currentHeight = Math.min(totalHeight, usableHeight);
-    
-    // 计算在 canvas 上对应的像素高度
-    const cropHeightPx = currentHeight / ratio;
-
-    // 在内存中创建一个新的 canvas 来裁剪当前页的内容
-    const pageCanvas = document.createElement('canvas');
-    pageCanvas.width = canvas.width;
-    pageCanvas.height = cropHeightPx;
-    const ctx = pageCanvas.getContext('2d');
-    
-    // 从主图对应的位置精确切割
-    ctx.drawImage(
-      canvas,
-      0, position / ratio, // 源图片的裁剪起始位置（向下偏移）
-      canvas.width, cropHeightPx,
-      0, 0,
-      canvas.width, cropHeightPx
-    );
-
-    // 将裁剪后的图片转为数据
-    const pageImgData = pageCanvas.toDataURL('image/jpeg', 1.0);
-
-    // 将图片添加到 PDF 页面
-    doc.addImage(pageImgData, 'JPEG', margin, margin, usableWidth, currentHeight);
-
-    // 更新剩余高度和处理位置
-    totalHeight -= currentHeight;
-    position += currentHeight;
+    doc.text(lines[i], margin, y);
+    y += 8; // 换行间距（可根据需要微调）
   }
 
   return { blob: doc.output('blob'), filename: `${name}.pdf` };
