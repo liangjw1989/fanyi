@@ -591,62 +591,66 @@ const { blob, filename } = await genPDF(translated, f.name);
 
     // ==================== 最终极稳定版 callProxy ====================
   async function callProxy(text, target) {
-  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // 你的腾讯云函数地址
-
-  try {
-    const res = await fetch(backendUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, target })
-    });
-
-    // 1. 获取原始响应内容
-    let rawText = await res.text();
-    console.log("=== 后端原始返回 ===", rawText);
-
-    // 2. 移除可能存在的 BOM 头 (EF BB BF)，防止解析出错
-    rawText = rawText.replace(/^\uFEFF/, '');
-
-    // 3. 试着解析 JSON
+    const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
+  
     try {
-      // 解析最外层 JSON
-      const outer = JSON.parse(rawText);
-      
-      // 4. 核心逻辑：处理 result 字段
-      // 如果 result 是字符串（通常是转义过的 JSON），那就二次解析它
-      if (typeof outer.result === 'string') {
-        // 再次解析，得到真正的 { 文本: "..." }
-        const inner = JSON.parse(outer.result);
-        // 取出纯净的翻译文本
-        return inner.文本; 
-      }
-      
-      // 如果 result 已经是对象，直接取
-      if (outer.result && outer.result.文本) {
-        return outer.result.文本;
-      }
+        const res = await fetch(backendUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, target })
+        });
 
-      // 如果到这里还没返回，说明格式不对
-      throw new Error('无法定位 "文本" 字段');
+        let rawText = await res.text();
+        console.log("=== 后端原始返回 ===", rawText);
 
-    } catch (parseError) {
-      // 如果 JSON.parse 失败，尝试用最笨但最稳妥的正则提取
-      // 这个正则适配你截图里的格式： "文本":"学术..."
-      const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
-      if (match && match[1]) {
-        // 清理一下多余的转义符
-        return match[1].replace(/\\n/g, '\n').replace(/\\\"/g, '"');
-      }
-      
-      // 实在没办法了，返回空字符串
-      console.error("解析彻底失败:", parseError);
-      return "";
+        // 1. 去除BOM头
+        rawText = rawText.replace(/^\uFEFF/, '');
+
+        // 2. 只要返回的是有效字符串，直接深度解析
+        // 你的后端返回的是: "{\"code\":0,\"result\":\"{\"文本\":\"...\"}\"}"
+        // 这种格式需要两次 JSON.parse
+        
+        let finalText = "";
+
+        // 尝试解析最外层
+        try {
+            const firstParse = JSON.parse(rawText);
+            
+            // 检查最外层的 code 是否为 0
+            if (firstParse.code === 0) {
+                // 取出 result 字段
+                let resultData = firstParse.result;
+                
+                // 如果 result 是字符串，说明它是转义过的 JSON，需要二次解析
+                if (typeof resultData === 'string') {
+                    const secondParse = JSON.parse(resultData);
+                    finalText = secondParse.文本; // 提取最终的文本
+                } 
+                // 如果 result 已经是对象，直接取
+                else if (typeof resultData === 'object' && resultData.文本) {
+                    finalText = resultData.文本;
+                }
+            }
+        } catch (e) {
+            console.warn("JSON解析失败，尝试正则提取...");
+            // 如果 JSON 解析彻底失败，使用正则提取（兜底方案）
+            // 这个正则专门匹配 \"文本\":\"内容\" 这种转义过的格式
+            const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
+            if (match && match[1]) {
+                finalText = match[1];
+            }
+        }
+
+        // 3. 清理转义字符，美化输出
+        finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
+
+        console.log("✅ 提取到的纯净文本:", finalText.substring(0, 100) + "...");
+        return finalText;
+
+    } catch (err) {
+        console.error("callProxy 网络错误:", err);
+        return "";
     }
-
-  } catch (err) {
-    console.error("callProxy 网络错误:", err);
-    return "";
-  }
 }
       // 👇 重点：头部加了 async
 async function extractText(file, ext) {
