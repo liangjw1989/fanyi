@@ -552,15 +552,11 @@ async function translateFile(f) {
     if (!text.trim()) throw new Error('没有文字');
     f.extractedText = text; f.status='translating'; f.progress=0; renderAll();
 
-    // ✅ 调用 callProxy，拿到纯净的中文文本
+    // ✅ 调用上面的 callProxy，拿到纯净的中文文本
     const translated = await callProxy(text, f.targetLang);
 
-    // ✅ 检查是否拿到有效结果
-    if (!translated) {
-      throw new Error('翻译服务暂时不可用，请检查后端');
-    }
-
-    // ✅ 这里直接赋值，不需要再 JSON.parse
+    // ✅ 即使 translated 是空字符串，也继续执行，让 genPDF 去处理
+    // 这样就可以在PDF里看到是哪里出了问题
     f.translatedText = translated;
 
     // 生成 PDF
@@ -591,7 +587,7 @@ async function translateFile(f) {
       renderAll();
     }
 
-    // ==================== 最终纯净版 callProxy ====================
+    // ==================== 最终双层解析版 callProxy ====================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com'; // 你的腾讯云函数地址
 
@@ -602,52 +598,47 @@ async function callProxy(text, target) {
       body: JSON.stringify({ text, target })
     });
 
-    // 1. 获取原始内容，并移除可能存在的 BOM 头 (\uFEFF)
+    // 1. 获取原始内容，并移除可能存在的 BOM 头 (EF BB BF)
     let rawText = await res.text();
     rawText = rawText.replace(/^\uFEFF/, '');
     console.log("=== 后端原始返回 ===", rawText);
 
-    // 2. 解析最外层的 JSON
+    // 2. 第一层解析：解析最外层的 JSON
     let outer;
     try {
       outer = JSON.parse(rawText);
     } catch (e) {
-      // 如果解析失败，返回空字符串
-      return "";
+      return ""; // 解析失败，返回空字符串
     }
 
-    // 3. 检查 code 状态
+    // 3. 检查后端状态
     if (outer.code !== 0) {
       return "";
     }
 
-    // 4. 获取 result 字段（它本身就是字符串）
+    // 4. 获取 result 字段（它本身是一个 JSON 字符串，如 "{\"文本\":\"你好\"}"）
     const resultStr = outer.result || "";
     if (!resultStr) return "";
 
-    // 5. 核心提取逻辑：尝试解析 resultStr 中的 "文本"
+    // 5. ✅ 第二层解析：解析 result 字符串，提取 "文本"
     let finalText = "";
     try {
       const inner = JSON.parse(resultStr);
       if (inner.文本) {
-        finalText = inner.文本;
+        finalText = inner.文本; // 成功提取中文！
       } else if (inner.text) {
         finalText = inner.text;
       }
     } catch (e) {
-      // 如果解析失败，可能 resultStr 本身就是纯文本，直接使用
+      // 如果内层解析失败，说明 result 本身就是纯文本
       finalText = resultStr;
     }
-
-    // 6. 清理转义字符，让 PDF 显示更干净
-    // 这一步可以移除多余的 \n 和 \"
-    finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
 
     return finalText; // ✅ 返回纯净的中文文本
 
   } catch (err) {
     console.error("callProxy 网络错误:", err);
-    return ""; // 遇到任何错误返回空字符串
+    return ""; // 任何错误都返回空字符串
   }
 }
       // 👇 重点：头部加了 async
