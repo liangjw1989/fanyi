@@ -729,10 +729,8 @@ async function genPDF(text, name) {
 
   const mmToPx = 3.779528;
   const a4WidthMm = 210;
-  const a4HeightMm = 297;
   const marginMm = 10;
   const usableWidthMm = a4WidthMm - 2 * marginMm;
-  const usableHeightMm = a4HeightMm - 2 * marginMm;
   const containerWidthPx = Math.floor(usableWidthMm * mmToPx);
 
   const tempDiv = document.createElement('div');
@@ -763,17 +761,32 @@ async function genPDF(text, name) {
   const fullHeightPx = tempDiv.scrollHeight;
   console.log('📏 容器实际高度:', fullHeightPx, 'px');
 
-  const canvas = await html2canvas(tempDiv, {
-    scale: 2,
-    useCORS: true,
-    logging: false,
-    windowWidth: containerWidthPx,
-    windowHeight: fullHeightPx,
-  });
+  // ✅ 核心修复：用 try-catch 包裹渲染过程，确保容器必定被移除
+  let canvas;
+  try {
+    canvas = await html2canvas(tempDiv, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      windowWidth: containerWidthPx,
+      windowHeight: fullHeightPx,
+    });
+    console.log('📐 canvas 尺寸:', canvas.width, 'x', canvas.height);
+  } catch (err) {
+    console.error('❌ html2canvas 渲染失败:', err);
+    // 即使失败也要清理
+    if (tempDiv.parentNode) document.body.removeChild(tempDiv);
+    throw err;
+  }
 
-  document.body.removeChild(tempDiv);
-
-  console.log('📐 canvas 尺寸:', canvas.width, 'x', canvas.height);
+  // ✅ 安全移除容器
+  try {
+    if (tempDiv.parentNode) {
+      document.body.removeChild(tempDiv);
+    }
+  } catch (e) {
+    console.warn('移除容器时出错（可忽略）:', e.message);
+  }
 
   const imgData = canvas.toDataURL('image/jpeg', 0.95);
 
@@ -807,7 +820,12 @@ async function genPDF(text, name) {
   }
 
   console.log(`📄 PDF 共 ${doc.internal.getNumberOfPages()} 页`);
-  return { blob: doc.output('blob'), filename: `${name}.pdf` };
+  
+  // ✅ 检查 PDF 是否真的生成了
+  const blob = doc.output('blob');
+  console.log('📦 PDF blob 大小:', blob.size, 'bytes');
+  
+  return { blob, filename: `${name}.pdf` };
 }
 
     async function genDOCX(text, name) {
