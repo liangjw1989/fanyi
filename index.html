@@ -601,6 +601,7 @@ const { blob, filename } = await genPDF(translated, f.name);
     });
 
     let rawText = await res.text();
+   console.log("💥 我看看 rawText 到底是啥:", rawText); // 👈 加这一行
     // 去除 BOM 头
     rawText = rawText.replace(/^\uFEFF/, '');
     
