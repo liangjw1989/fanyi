@@ -1450,7 +1450,8 @@ console.log('🌍 翻译结果总长度:', translated.length);
   }
 
   // ==================== genPDF ====================
-  async function genPDF(text, name) {
+  // ======================== 稳健版 genPDF（无空白页、自动分页、大字体）========================
+async function genPDF(text, name) {
   let tempDiv = null;
   try {
     const { jsPDF } = window.jspdf;
@@ -1465,16 +1466,17 @@ console.log('🌍 翻译结果总长度:', translated.length);
     processedText = processedText.replace(/\n{3,}/g, '\n\n');
 
     const mmToPx = 3.779528;
-    const containerWidthMm = 190; // 可用宽度 190mm
-    const containerWidthPx = Math.floor(containerWidthMm * mmToPx); // ≈718px
+    const containerWidthMm = 190;
+    const containerWidthPx = Math.floor(containerWidthMm * mmToPx);
 
+    // 只创建一个容器，兼具测量与渲染
     tempDiv = document.createElement('div');
     tempDiv.style.cssText = `
       position: absolute; left: -9999px; top: 0;
       width: ${containerWidthPx}px;
       padding: 18px;
       box-sizing: border-box;
-      font-size: 17px;           /* 略大，阅读更舒适 */
+      font-size: 17px;
       font-family: "SimSun", "宋体", "Noto Serif CJK SC", serif;
       line-height: 1.9;
       white-space: pre-wrap;
@@ -1486,43 +1488,17 @@ console.log('🌍 翻译结果总长度:', translated.length);
     tempDiv.innerText = processedText;
     document.body.appendChild(tempDiv);
 
+    // 等待两帧确保文本布局稳定
     await new Promise(r => requestAnimationFrame(r));
     await new Promise(r => requestAnimationFrame(r));
 
-    const contentHeightPx = tempDiv.scrollHeight; // 实际内容高度（css 像素）
-    document.body.removeChild(tempDiv);
-    tempDiv = null;
-
+    const contentHeightPx = tempDiv.scrollHeight;
     console.log('📏 内容高度:', contentHeightPx, 'px');
 
     if (contentHeightPx < 20) throw new Error('内容高度异常');
 
-    // 用 canvas 渲染（宽高放大 2 倍保证清晰度）
-    const canvas = document.createElement('canvas');
-    canvas.width = containerWidthPx * 2;
-    canvas.height = contentHeightPx * 2;
-    const ctx = canvas.getContext('2d');
-
-    // 创建离屏 div 并截屏
-    const offDiv = document.createElement('div');
-    offDiv.style.cssText = `
-      position: absolute; left: -9999px; top: 0;
-      width: ${containerWidthPx}px;
-      padding: 18px;
-      box-sizing: border-box;
-      font-size: 17px;
-      font-family: "SimSun", "宋体", serif;
-      line-height: 1.9;
-      white-space: pre-wrap;
-      word-break: break-word;
-      color: #000;
-      background: #fff;
-    `;
-    offDiv.innerText = processedText;
-    document.body.appendChild(offDiv);
-
-    // 使用 html2canvas 渲染（自动处理）
-    const renderedCanvas = await html2canvas(offDiv, {
+    // 直接用同一个 div 渲染，不提前移除
+    const canvas = await html2canvas(tempDiv, {
       scale: 2,
       useCORS: true,
       allowTaint: true,
@@ -1533,30 +1509,30 @@ console.log('🌍 翻译结果总长度:', translated.length);
       windowHeight: contentHeightPx,
     });
 
-    document.body.removeChild(offDiv);
+    // 渲染完成后再移除
+    if (tempDiv && tempDiv.parentNode) {
+      tempDiv.parentNode.removeChild(tempDiv);
+      tempDiv = null;
+    }
 
-    console.log('📐 canvas 尺寸:', renderedCanvas.width, 'x', renderedCanvas.height);
+    console.log('📐 canvas 尺寸:', canvas.width, 'x', canvas.height);
 
-    const imgData = renderedCanvas.toDataURL('image/jpeg', 0.92);
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
     const doc = new jsPDF('p', 'mm', 'a4');
 
-    const pageW = doc.internal.pageSize.getWidth();   // 210
-    const pageH = doc.internal.pageSize.getHeight();  // 297
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
     const margin = 12;
-    const usableW = pageW - 2 * margin;   // 186
-    const usableH = pageH - 2 * margin;   // 273
+    const usableW = pageW - 2 * margin;
+    const usableH = pageH - 2 * margin;
 
-    const scale = usableW / renderedCanvas.width;
-    const totalContentHeightMm = contentHeightPx * 2 * scale; // canvas 高度 * scale
-
-    console.log('📏 缩放比:', scale, '总内容高(mm):', totalContentHeightMm);
-
-    let yOffset = 0; // canvas 内的 y 偏移（像素）
+    const scale = usableW / canvas.width;
+    let yOffset = 0;
     let pageCount = 0;
 
-    while (yOffset < renderedCanvas.height) {
+    while (yOffset < canvas.height) {
       const maxSrcH = Math.floor(usableH / scale);
-      const drawSrcH = Math.min(renderedCanvas.height - yOffset, maxSrcH);
+      const drawSrcH = Math.min(canvas.height - yOffset, maxSrcH);
       const drawH = drawSrcH * scale;
 
       if (yOffset > 0) doc.addPage();
@@ -1567,7 +1543,7 @@ console.log('🌍 翻译结果总长度:', translated.length);
         usableW, drawH,
         undefined, undefined,
         0, yOffset,
-        renderedCanvas.width, drawSrcH
+        canvas.width, drawSrcH
       );
 
       console.log(`📄 第${pageCount + 1}页: yOffset=${yOffset}, drawSrcH=${drawSrcH}, drawH=${drawH.toFixed(1)}mm`);
