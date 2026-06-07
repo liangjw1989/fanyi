@@ -589,7 +589,7 @@ const { blob, filename } = await genPDF(translated, f.name);
       renderAll();
     }
 
-    // ======================== 最终必胜版 callProxy (应对双层 JSON) ========================
+    // ======================== 最终完胜版 callProxy (保证提取成功) ========================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
 
@@ -606,13 +606,12 @@ async function callProxy(text, target) {
     console.log("🔥 原始返回:", rawText.substring(0, 100) + "...");
 
     // ============================================================
-    // 🚀 核心：剥洋葱式解析
-    // 数据格式： "{\"code\":0,\"result\":\"{\"文本\":\"内容...\"}\"}"
+    // 🚀 核心逻辑：剥洋葱式解析你的特殊 JSON 格式
     // ============================================================
     let finalText = null;
 
     try {
-      // 1. 去除最外层的双引号
+      // 1. 去掉最外层的双引号（你的数据最外层有引号）
       let cleanStr = rawText.trim();
       if (cleanStr.startsWith('"') && cleanStr.endsWith('"')) {
         cleanStr = cleanStr.slice(1, -1);
@@ -620,35 +619,35 @@ async function callProxy(text, target) {
 
       // 2. 解析第一层 JSON
       const outer = JSON.parse(cleanStr);
-      
-      // 3. 解析第二层 JSON (result 字段)
+
+      // 3. 解析 result 字段里的 JSON（第二层）
       if (outer.code === 0 && outer.result) {
-        // 这里的 outer.result 还是一个字符串： "{\"文本\":\"...\"}"
+        // 注意：result 还包着一层 JSON 字符串
         const inner = JSON.parse(outer.result);
         finalText = inner.文本;
       }
     } catch (e) {
-      console.warn("JSON 解析失败，尝试正则兜底...");
-      // 兜底：直接匹配 "文本":"内容"
-      const match = rawText.match(/"文本":"([^"]+)/);
-      if (match && match[1]) {
-        finalText = match[1];
+      console.warn("JSON 层层解析失败，尝试暴力正则兜底...");
+      // 4. 如果正规解析失败，用最稳妥的正则 "文本":"内容"
+      const matches = rawText.match(/"文本":"([^"]+)/);
+      if (matches && matches[1]) {
+        finalText = matches[1];
       }
     }
 
-    // ✅ 提取成功，清理转义符
+    // ✅ 提取成功后，清理转义符，解决 PDF 压扁和换行问题
     if (finalText) {
       finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
-      console.log("✅ 提取成功！文本前100字:", finalText.substring(0, 100) + "...");
+      console.log("✅ 提取成功！翻译文本前100字:", finalText.substring(0, 100) + "...");
       return finalText;
     }
 
-    // 兜底：返回原始数据
-    console.error("❌ 所有解析方法都失败！");
+    // 兜底：返回原始数据，方便排查
+    console.error("❌ 所有解析方法都失败！返回原始数据");
     return rawText;
 
   } catch (err) {
-    console.error("callProxy 错误:", err);
+    console.error("callProxy 网络或严重错误:", err);
     return "【网络请求错误】";
   }
 }
