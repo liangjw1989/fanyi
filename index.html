@@ -743,8 +743,11 @@ async function genPDF(text, name) {
     const containerWidthPx = Math.floor((210 - 20) * mmToPx);
     
     tempDiv = document.createElement('div');
+    // ✅ 关键修复：不要用 opacity:0，改用绝对定位移出屏幕
     tempDiv.style.cssText = `
-      position: fixed; left: 0; top: 0;
+      position: absolute;
+      left: -9999px;
+      top: 0;
       width: ${containerWidthPx}px;
       padding: 15px;
       box-sizing: border-box;
@@ -755,20 +758,22 @@ async function genPDF(text, name) {
       word-break: break-word;
       color: #000;
       background: #fff;
-      opacity: 0;
-      pointer-events: none;
-      z-index: -1;
     `;
     
     tempDiv.innerText = text || '暂无内容';
     document.body.appendChild(tempDiv);
     console.log('🟢 容器已添加到 DOM');
     
+    // 等两帧确保渲染完成
     await new Promise(r => requestAnimationFrame(r));
     await new Promise(r => requestAnimationFrame(r));
     
     const fullHeightPx = tempDiv.scrollHeight;
     console.log('📏 容器高度:', fullHeightPx, 'px');
+    
+    if (fullHeightPx < 10) {
+      throw new Error('容器高度异常: ' + fullHeightPx);
+    }
     
     console.log('🟢 开始渲染 canvas...');
     const canvas = await html2canvas(tempDiv, {
@@ -781,11 +786,10 @@ async function genPDF(text, name) {
     });
     
     console.log('🟢 Canvas 渲染完成');
-    console.log('🔍 canvas 对象:', canvas);
-    console.log('🔍 canvas 类型:', typeof canvas);
+    console.log('🔍 canvas 尺寸:', canvas.width, 'x', canvas.height);
     
-    if (!canvas || !canvas.width || !canvas.height) {
-      throw new Error('html2canvas 返回无效对象，可能是样式或字体问题');
+    if (!canvas || !canvas.width || canvas.height < 10) {
+      throw new Error('Canvas 渲染失败，尺寸异常');
     }
     
     // 清理容器
@@ -795,14 +799,12 @@ async function genPDF(text, name) {
     }
     console.log('✅ 容器已移除');
     
-    console.log('📐 canvas 尺寸:', canvas.width, 'x', canvas.height);
-    
     console.log('🟢 生成图片数据...');
     const imgData = canvas.toDataURL('image/jpeg', 0.95);
     console.log('🖼️ 图片数据长度:', imgData.length);
     
     if (!imgData || imgData.length < 100) {
-      throw new Error('图片数据异常，长度过短');
+      throw new Error('图片数据异常');
     }
     
     console.log('🟢 创建 PDF...');
@@ -858,17 +860,19 @@ async function genPDF(text, name) {
       try { tempDiv.parentNode.removeChild(tempDiv); } catch(e) {}
     }
     
-    // 尝试生成错误 PDF
+    // 返回错误 PDF
     try {
       const { jsPDF } = window.jspdf;
       if (jsPDF) {
         const errorDoc = new jsPDF();
-        errorDoc.text('PDF 生成失败', 10, 10);
-        errorDoc.text('错误: ' + err.message, 10, 20);
+        errorDoc.setFontSize(14);
+        errorDoc.text('PDF 生成失败', 10, 15);
+        errorDoc.setFontSize(10);
+        errorDoc.text('错误: ' + err.message, 10, 25);
         return { blob: errorDoc.output('blob'), filename: `${name}_error.pdf` };
       }
     } catch (e) {
-      console.error('连错误 PDF 都生成不了:', e);
+      console.error('错误 PDF 生成也失败:', e);
     }
     
     throw err;
