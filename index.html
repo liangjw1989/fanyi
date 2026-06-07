@@ -601,59 +601,43 @@ async function callProxy(text, target) {
     });
 
     let rawText = await res.text();
-    rawText = rawText.replace(/^\uFEFF/, '').trim(); // 去BOM和首尾空白
-    console.log("🔥 原始返回全文:", rawText); // 先打印完整返回，便于定位问题
+    rawText = rawText.replace(/^\uFEFF/, '').trim();
+    console.log("🔥 原始返回全文:", rawText);
 
-    // ============= 方法1：标准 JSON 双重解析 =============
+    // ========== 尝试1：标准 JSON 解析（无论结构） ==========
     try {
       const outer = JSON.parse(rawText);
-      if (outer.code === 0 && outer.result) {
-        // 如果 result 是一个 JSON 字符串（常见情况）
+      // 如果 result 存在
+      if (outer.result) {
+        // 如果 result 还是一个 JSON 字符串，尝试解第二层
         try {
           const inner = JSON.parse(outer.result);
-          const value = inner["文本"] || inner["“文本”"] || inner["\"文本\""];
-          if (value) {
-            console.log("✅ 标准JSON解析成功");
-            return value;
+          // 随便什么键，只要值是字符串且包含中文
+          for (let key of Object.keys(inner)) {
+            if (typeof inner[key] === 'string' && /[\u4e00-\u9fa5]/.test(inner[key])) {
+              console.log("✅ 双层JSON解析成功，键:", key);
+              return inner[key];
+            }
           }
         } catch (e) {
-          // result 可能就是纯文本，直接返回
-          console.log("✅ result 为纯文本，直接返回");
-          return outer.result;
+          // result 本身就是翻译文本
+          if (typeof outer.result === 'string' && outer.result.length > 0) {
+            console.log("✅ result 为纯文本");
+            return outer.result;
+          }
         }
       }
     } catch (e) {
-      console.warn("标准JSON解析失败，启用暴力匹配", e.message);
+      console.warn("标准JSON解析失败，进入暴力提取", e.message);
     }
 
-    // ============= 方法2：暴力正则匹配（兼容中英文引号） =============
-    // 匹配模式： "文本":"值" 或 “文本”：“值”
-    let match = rawText.match(/["“]文本["”]\s*:\s*["“]([^"“”]*?)["“”]/);
-    if (!match) {
-      // 再尝试处理转义引号 \"
-      match = rawText.match(/\\?"文本\\?"\s*:\s*\\?"(.*?)\\?"/);
-    }
-    if (!match) {
-      // 最后尝试：寻找 "文本": 后直接截取到字符串结束符号
-      match = rawText.match(/["“]文本["”]\s*:\s*([^,}\]]+)/);
-    }
-    if (match && match[1]) {
-      let finalText = match[1]
-        .replace(/\\n/g, '\n')
-        .replace(/\\\"/g, '"')
-        .replace(/\\“/g, '“')
-        .replace(/\\”/g, '”')
-        .trim();
-      console.log("✅ 暴力匹配成功，前100字:", finalText.substring(0, 100));
-      return finalText;
-    }
-
-    // ============= 方法3：自杀式提取 =============
-    // 找到第一个 "文本" 键，然后找下一个引号后的内容，直到下一个引号或字符串边界
-    const idx = rawText.search(/["“]文本["”]\s*:/);
-    if (idx !== -1) {
-      const afterColon = rawText.substring(idx).match(/\s*:\s*(["“])(.*?)\1/);
-      if (afterColon) return afterColon[2];
+    // ========== 尝试2：提取最长的中文字符串（不管字段名） ==========
+    const chineseMatches = rawText.match(/[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/g);
+    if (chineseMatches && chineseMatches.length > 0) {
+      // 找最长的那个，大概率是正文
+      const longest = chineseMatches.reduce((a, b) => a.length > b.length ? a : b);
+      console.log("✅ 暴力提取成功，前100字:", longest.substring(0, 100));
+      return longest;
     }
 
     console.error("❌ 所有提取方法失败，返回原始数据");
@@ -717,72 +701,79 @@ async function extractText(file, ext) {
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
 
-  // 1. 计算 A4 有效宽度 (单位 mm 转 px 需要转换，通常 1mm ≈ 3.78px)
-  const mmToPx = 3.78; // 96dpi
+  // 1. 精确的毫米 -> 像素转换（96dpi 下 1mm = 3.779528px）
+  const mmToPx = 3.779528;
   const a4WidthMm = 210;
-  const marginMm = 15;
-  const usableWidthMm = a4WidthMm - 2 * marginMm; // 180mm
-  const usableWidthPx = usableWidthMm * mmToPx;   // 约 680px
+  const a4HeightMm = 297;
+  const marginMm = 10;
+  const usableWidthMm = a4WidthMm - 2 * marginMm; // 190mm
+  const usableHeightMm = a4HeightMm - 2 * marginMm; // 277mm
+  const containerWidthPx = Math.floor(usableWidthMm * mmToPx); // 约 718px
 
-  // 2. 创建容器，宽度等于可用宽度，确保文字自动换行
+  // 2. 创建绝对定位、不可见的容器，避免被页面样式干扰
   const tempDiv = document.createElement('div');
-  tempDiv.style.width = usableWidthPx + 'px';
-  tempDiv.style.padding = '20px';                 // 用 padding 代替 margin
-  tempDiv.style.boxSizing = 'border-box';         // 宽度包含 padding
-  tempDiv.style.fontSize = '16px';                // 适当字号
-  tempDiv.style.fontFamily = 'SimSun, "宋体", serif';
+  tempDiv.style.position = 'absolute';
+  tempDiv.style.left = '-9999px';
+  tempDiv.style.top = '0';
+  tempDiv.style.width = containerWidthPx + 'px';
+  tempDiv.style.padding = '15px';
+  tempDiv.style.boxSizing = 'border-box';
+  tempDiv.style.fontSize = '16px';
+  tempDiv.style.fontFamily = 'SimSun, "宋体", "Noto Serif CJK SC", serif';
   tempDiv.style.lineHeight = '1.8';
   tempDiv.style.whiteSpace = 'pre-wrap';
-  tempDiv.style.wordBreak = 'break-word';         // 更好断行
+  tempDiv.style.wordBreak = 'break-word';
   tempDiv.style.color = '#000';
   tempDiv.style.background = '#fff';
 
-  // 3. 文本预处理：保留换行，过长的无换行段落强制截断
+  // 3. 处理文本（保留原有换行，太长的行自动断行）
   let processedText = text || '暂无内容';
-  if (!processedText.includes('\n') && processedText.length > 80) {
-    processedText = processedText.replace(/(.{60})/g, '$1\n');
-  }
   tempDiv.innerText = processedText;
   document.body.appendChild(tempDiv);
 
-  // 4. 渲染成 canvas
+  // 4. 渲染 canvas，注意明确指定窗口尺寸
   const canvas = await html2canvas(tempDiv, {
-    scale: 2,                     // 清晰度
+    scale: 2,
     useCORS: true,
     logging: false,
-    windowWidth: usableWidthPx,   // 明确指定视口宽度
+    windowWidth: containerWidthPx,
     windowHeight: tempDiv.scrollHeight
   });
   document.body.removeChild(tempDiv);
 
-  const imgData = canvas.toDataURL('image/jpeg', 1.0);
+  // ✅ 打印尺寸，便于排查
+  console.log('📐 canvas 尺寸:', canvas.width, 'x', canvas.height);
+  console.log('📐 容器宽度:', containerWidthPx, 'canvas宽度/2:', canvas.width / 2);
+
+  const imgData = canvas.toDataURL('image/jpeg', 0.95);
 
   // 5. 初始化 PDF
   const doc = new jsPDF('p', 'mm', 'a4');
-  const pdfWidth = doc.internal.pageSize.getWidth();  // 210
-  const pdfHeight = doc.internal.pageSize.getHeight(); // 297
+  const pageW = doc.internal.pageSize.getWidth();  // 210
+  const pageH = doc.internal.pageSize.getHeight(); // 297
   const margin = 10;
-  const pageUsableWidth = pdfWidth - 2 * margin;  // 190mm
-  const pageUsableHeight = pdfHeight - 2 * margin;// 277mm
+  const pdfUsableW = pageW - 2 * margin;
+  const pdfUsableH = pageH - 2 * margin;
 
-  // 6. 计算缩放（宽度始终填满，高度按比例）
-  const scale = pageUsableWidth / canvas.width;
-  const fullHeight = canvas.height * scale;   // 图片在 PDF 中的总高度(mm)
+  // 6. 按宽度缩放，高度自然分页
+  const scale = pdfUsableW / canvas.width;
+  const fullHeight = canvas.height * scale; // 图片总高度（mm）
+  console.log('📏 scale:', scale, 'fullHeight:', fullHeight, 'mm');
 
-  let yOffset = 0; // 源图已用高度(px)
+  let yOffset = 0; // 源图像素偏移
   while (yOffset < canvas.height) {
-    const maxSrcH = pageUsableHeight / scale; // 每页能容纳的源图高度
+    const maxSrcH = pdfUsableH / scale;             // 一页能容纳的最大源图高度
     const drawSrcH = Math.min(canvas.height - yOffset, maxSrcH);
-    const drawH = drawSrcH * scale;
+    const drawH = drawSrcH * scale;                 // 本页实际高度 mm
 
     if (yOffset > 0) doc.addPage();
 
     doc.addImage(
       imgData, 'JPEG',
       margin, margin,
-      pageUsableWidth, drawH,
+      pdfUsableW, drawH,             // 宽填满，高按比例
       undefined, undefined,
-      0, yOffset,           // 从源图的 yOffset 处开始截
+      0, yOffset,
       canvas.width, drawSrcH
     );
 
