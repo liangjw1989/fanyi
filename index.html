@@ -589,7 +589,7 @@ const { blob, filename } = await genPDF(translated, f.name);
       renderAll();
     }
 
-    // ======================== 最终版 callProxy (专门应对双重 JSON) ========================
+    // ======================== 最终永不失效版 callProxy (暴力切分) ========================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
 
@@ -601,49 +601,46 @@ async function callProxy(text, target) {
     });
 
     let rawText = await res.text();
-    // 去除可能存在的 BOM 头
+    // 去除 BOM 头
     rawText = rawText.replace(/^\uFEFF/, '');
+    
+    console.log("🔥 后端原始返回(前300字):", rawText.substring(0, 300));
 
-    console.log("🔥 后端返回原始内容(前200字):", rawText.substring(0, 200));
-
-    // ============================================================
-    // 🚀 核心解析逻辑：处理双重 JSON 结构
-    // 结构： "{\"code\":0,\"result\":\"{\"文本\":\"...\"}\"}"
-    // ============================================================
-    let finalText = null;
-
-    try {
-      // 【第一层】解析最外层 JSON (去除外层的引号和转义)
-      const firstParse = JSON.parse(rawText);
+    // === 核心：暴力提取 "文本":"..." 中间的内容 ===
+    const searchKey = '"文本":"';
+    const startIdx = rawText.indexOf(searchKey);
+    
+    if (startIdx !== -1) {
+      // 找到起始位置，后移
+      let cursor = startIdx + searchKey.length;
+      let extracted = '';
       
-      if (firstParse.code === 0 && firstParse.result) {
-        // 此时 firstParse.result 是一个字符串： "{\"文本\":\"内容...\"}"
-        // 【第二层】解析 result 字段里的 JSON
-        const secondParse = JSON.parse(firstParse.result);
-        
-        if (secondParse && secondParse.文本) {
-          finalText = secondParse.文本;
+      // 循环读取字符，直到遇到未转义的双引号
+      while (cursor < rawText.length) {
+        const char = rawText[cursor];
+        if (char === '"') {
+          // 如果是转义引号 \"，则继续读；否则结束
+          if (rawText[cursor - 1] === '\\') {
+            extracted += char;
+            cursor++;
+          } else {
+            break;
+          }
+        } else {
+          extracted += char;
+          cursor++;
         }
       }
-    } catch (e) {
-      // 如果标准的 JSON.parse 失败，兜底用正则提取
-      // 这个正则专门匹配你格式里的 \"文本\":\"内容\"
-      const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
-      if (match && match[1]) {
-        finalText = match[1];
-      }
-    }
-
-    // ✅ 如果提取成功，处理一下转义符，让文章段落完美显示
-    if (finalText) {
-      finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
-      console.log("✅ 提取成功！翻译文本前100字:", finalText.substring(0, 100) + "...");
+      
+      // ✅ 清理转义符 (将 \n 换成真换行)
+      let finalText = extracted.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
+      console.log("✅ 暴力提取成功！翻译文本前100字:", finalText.substring(0, 100) + "...");
       return finalText;
     }
 
-    // 兜底：如果解析彻底失败，返回原始数据，方便排查
-    console.error("❌ 所有解析方法都失败了！返回原始数据");
-    return "【解析失败-原始数据】\n" + rawText.substring(0, 200) + "...";
+    // 兜底：如果提取失败，返回原始数据，方便排查
+    console.error("❌ 提取失败！返回原始数据");
+    return rawText;
 
   } catch (err) {
     console.error("callProxy 网络或严重错误:", err);
