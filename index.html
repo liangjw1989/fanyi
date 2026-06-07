@@ -602,65 +602,67 @@ async function callProxy(text, target) {
 
     let rawText = await res.text();
     rawText = rawText.replace(/^\uFEFF/, '').trim();
-    console.log("🔥 原始返回全文:", rawText);
+    console.log("🔥 原始返回前500字:", rawText.substring(0, 500));
+    console.log("🔥 原始返回总长度:", rawText.length);
 
-    // ========== 方法1：先解析外层 JSON ==========
+    // ========== 方法1：解析外层 JSON ==========
     try {
       const outer = JSON.parse(rawText);
       if (outer.result) {
-        // result 可能是纯文本字符串
+        // result 可能是纯文本
         if (typeof outer.result === 'string' && outer.result.length > 10) {
-          // 检查是否是 JSON 字符串（以 { 或 [ 开头）
-          if (outer.result.trim().startsWith('{') || outer.result.trim().startsWith('[')) {
+          // 检查是否是嵌套 JSON
+          if (outer.result.trim().startsWith('{')) {
             try {
               const inner = JSON.parse(outer.result);
-              // 遍历所有值，找最长的中文字符串
+              // 找最长的字符串值
               let longest = '';
-              const findChinese = (obj) => {
-                if (typeof obj === 'string' && obj.length > longest.length && /[\u4e00-\u9fa5]/.test(obj)) {
+              const findLongest = (obj) => {
+                if (typeof obj === 'string' && obj.length > longest.length) {
                   longest = obj;
                 } else if (Array.isArray(obj)) {
-                  obj.forEach(findChinese);
+                  obj.forEach(findLongest);
                 } else if (obj && typeof obj === 'object') {
-                  Object.values(obj).forEach(findChinese);
+                  Object.values(obj).forEach(findLongest);
                 }
               };
-              findChinese(inner);
-              if (longest) {
-                console.log("✅ 内层JSON解析成功，长度:", longest.length);
+              findLongest(inner);
+              if (longest && longest.length > 50) {
+                console.log("✅ 嵌套JSON提取成功，长度:", longest.length);
                 return longest;
               }
-            } catch (e) {
-              // 不是有效 JSON，就用外层的 result
-            }
+            } catch (e) {}
           }
           // result 本身就是翻译文本
-          console.log("✅ result 为纯文本，长度:", outer.result.length);
+          console.log("✅ result 纯文本提取成功，长度:", outer.result.length);
           return outer.result;
         }
       }
     } catch (e) {
-      console.warn("外层 JSON 解析失败:", e.message);
+      console.warn("外层 JSON 解析失败");
     }
 
-    // ========== 方法2：提取所有中文，拼接成完整文本 ==========
-    // 找到 "result": 或 "result"： 后面的内容
-    const resultMatch = rawText.match(/"result"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
+    // ========== 方法2：正则提取 result 字段的完整内容 ==========
+    const resultMatch = rawText.match(/"result"\s*:\s*"((?:[^"\\]|\\.)*)"/);
     if (resultMatch && resultMatch[1]) {
-      let text = resultMatch[1]
+      let extracted = resultMatch[1]
         .replace(/\\n/g, '\n')
         .replace(/\\"/g, '"')
-        .replace(/\\t/g, '\t');
-      console.log("✅ 正则提取 result 字段，长度:", text.length);
-      if (text.length > 50) return text;
+        .replace(/\\t/g, '\t')
+        .replace(/\\\\/g, '\\');
+      if (extracted.length > 50) {
+        console.log("✅ 正则提取 result 成功，长度:", extracted.length);
+        return extracted;
+      }
     }
 
-    // ========== 方法3：直接取所有中文片段，拼接 ==========
-    const chinesePattern = /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef，。；：""''！？【】（）《》、…—\n]+/g;
+    // ========== 方法3：提取所有中文和标点（保留换行） ==========
+    const chinesePattern = /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef，。；：""''！？【】（）《》、…—\n\r]+/g;
     const allChinese = rawText.match(chinesePattern);
     if (allChinese && allChinese.length > 0) {
-      const fullText = allChinese.join('');
-      console.log("✅ 拼接所有中文片段，总长度:", fullText.length);
+      // 用换行符连接，保留原有的换行
+      const fullText = allChinese.join('\n');
+      console.log("✅ 拼接中文片段成功，总长度:", fullText.length);
       return fullText;
     }
 
@@ -670,16 +672,6 @@ async function callProxy(text, target) {
   } catch (err) {
     console.error("callProxy 网络或严重错误:", err);
     return "【网络请求错误】";
-  }
-}
-      // 👇 重点：头部加了 async
-async function extractText(file, ext) {
-  switch(ext) {
-    case 'pdf': return await extractPDF(file);
-    case 'docx': case 'doc': return await extractDocx(file);
-    case 'txt': return await file.text();
-    case 'png': case 'jpg': case 'jpeg': return await extractImage(file);
-    default: throw new Error('不支持');
   }
 }
 
@@ -730,37 +722,52 @@ async function genPDF(text, name) {
     console.log('📝 文本长度:', (text || '').length);
     
     const { jsPDF } = window.jspdf;
-    console.log('🟢 jsPDF 库已加载');
     
-    if (!jsPDF) {
-      throw new Error('jsPDF 库未加载');
+    if (!jsPDF || typeof html2canvas !== 'function') {
+      throw new Error('依赖库未加载');
     }
-    if (typeof html2canvas !== 'function') {
-      throw new Error('html2canvas 库未加载');
+    
+    // ========== 智能段落处理 ==========
+    let processedText = text || '暂无内容';
+    
+    // 1. 如果完全没有换行，按句号分句并添加段落间距
+    if (!processedText.includes('\n')) {
+      // 按中英文句号、问号、感叹号分句
+      processedText = processedText.replace(/([。！？；])(?=[^\n])/g, '$1\n');
+      // 英文句号也要处理（但避免小数点）
+      processedText = processedText.replace(/([.!?])\s+(?=[A-Z\u4e00-\u9fa5])/g, '$1\n');
     }
+    
+    // 2. 双换行变段落间距（空行保持）
+    processedText = processedText.replace(/\n{3,}/g, '\n\n');
+    
+    // 3. 每段之间加空行，让排版更清晰
+    processedText = processedText.replace(/\n/g, '\n');
+    
+    console.log('📝 处理后文本长度:', processedText.length);
+    console.log('📝 前200字:', processedText.substring(0, 200));
     
     const mmToPx = 3.779528;
     const containerWidthPx = Math.floor((210 - 20) * mmToPx);
     
     tempDiv = document.createElement('div');
-    // ✅ 关键修复：不要用 opacity:0，改用绝对定位移出屏幕
     tempDiv.style.cssText = `
       position: absolute;
       left: -9999px;
       top: 0;
       width: ${containerWidthPx}px;
-      padding: 15px;
+      padding: 20px;
       box-sizing: border-box;
-      font-size: 16px;
-      font-family: SimSun, "宋体", serif;
-      line-height: 1.8;
+      font-size: 14px;
+      font-family: "SimSun", "宋体", "Noto Serif CJK SC", serif;
+      line-height: 2.0;
       white-space: pre-wrap;
       word-break: break-word;
       color: #000;
       background: #fff;
     `;
     
-    tempDiv.innerText = text || '暂无内容';
+    tempDiv.innerText = processedText;
     document.body.appendChild(tempDiv);
     console.log('🟢 容器已添加到 DOM');
     
@@ -771,7 +778,7 @@ async function genPDF(text, name) {
     const fullHeightPx = tempDiv.scrollHeight;
     console.log('📏 容器高度:', fullHeightPx, 'px');
     
-    if (fullHeightPx < 10) {
+    if (fullHeightPx < 20) {
       throw new Error('容器高度异常: ' + fullHeightPx);
     }
     
@@ -780,7 +787,7 @@ async function genPDF(text, name) {
       scale: 2,
       useCORS: true,
       allowTaint: true,
-      logging: true,
+      logging: false,
       windowWidth: containerWidthPx,
       windowHeight: fullHeightPx,
     });
@@ -788,7 +795,7 @@ async function genPDF(text, name) {
     console.log('🟢 Canvas 渲染完成');
     console.log('🔍 canvas 尺寸:', canvas.width, 'x', canvas.height);
     
-    if (!canvas || !canvas.width || canvas.height < 10) {
+    if (!canvas || canvas.width < 100 || canvas.height < 20) {
       throw new Error('Canvas 渲染失败，尺寸异常');
     }
     
@@ -803,16 +810,12 @@ async function genPDF(text, name) {
     const imgData = canvas.toDataURL('image/jpeg', 0.95);
     console.log('🖼️ 图片数据长度:', imgData.length);
     
-    if (!imgData || imgData.length < 100) {
-      throw new Error('图片数据异常');
-    }
-    
     console.log('🟢 创建 PDF...');
     const doc = new jsPDF('p', 'mm', 'a4');
     
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
-    const margin = 10;
+    const margin = 12;
     const usableW = pageW - 2 * margin;
     const usableH = pageH - 2 * margin;
     
@@ -850,17 +853,12 @@ async function genPDF(text, name) {
     return { blob, filename: `${name}.pdf` };
     
   } catch (err) {
-    console.error('❌❌❌ genPDF 出错 ❌❌❌');
-    console.error('错误信息:', err.message);
-    console.error('错误类型:', err.constructor.name);
-    console.error('完整错误:', err);
+    console.error('❌ genPDF 出错:', err.message, err);
     
-    // 清理
     if (tempDiv && tempDiv.parentNode) {
       try { tempDiv.parentNode.removeChild(tempDiv); } catch(e) {}
     }
     
-    // 返回错误 PDF
     try {
       const { jsPDF } = window.jspdf;
       if (jsPDF) {
@@ -871,9 +869,7 @@ async function genPDF(text, name) {
         errorDoc.text('错误: ' + err.message, 10, 25);
         return { blob: errorDoc.output('blob'), filename: `${name}_error.pdf` };
       }
-    } catch (e) {
-      console.error('错误 PDF 生成也失败:', e);
-    }
+    } catch (e) {}
     
     throw err;
   }
