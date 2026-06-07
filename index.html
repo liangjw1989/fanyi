@@ -754,43 +754,53 @@ async function genPDF(text, name) {
   tempDiv.innerText = text || '暂无内容';
   document.body.appendChild(tempDiv);
 
-  // 等两帧确保布局完成
   await new Promise(r => requestAnimationFrame(r));
   await new Promise(r => requestAnimationFrame(r));
 
   const fullHeightPx = tempDiv.scrollHeight;
   console.log('📏 容器实际高度:', fullHeightPx, 'px');
 
-  // ✅ 核心修复：用 try-catch 包裹渲染过程，确保容器必定被移除
-  let canvas;
-  try {
-    canvas = await html2canvas(tempDiv, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      windowWidth: containerWidthPx,
-      windowHeight: fullHeightPx,
-    });
-    console.log('📐 canvas 尺寸:', canvas.width, 'x', canvas.height);
-  } catch (err) {
-    console.error('❌ html2canvas 渲染失败:', err);
-    // 即使失败也要清理
-    if (tempDiv.parentNode) document.body.removeChild(tempDiv);
-    throw err;
-  }
+  const canvas = await html2canvas(tempDiv, {
+    scale: 2,
+    useCORS: true,
+    logging: false,
+    windowWidth: containerWidthPx,
+    windowHeight: fullHeightPx,
+  });
 
   // ✅ 安全移除容器
   try {
-    if (tempDiv.parentNode) {
-      document.body.removeChild(tempDiv);
-    }
+    if (tempDiv.parentNode) tempDiv.parentNode.removeChild(tempDiv);
+    console.log('✅ 容器已移除');
   } catch (e) {
-    console.warn('移除容器时出错（可忽略）:', e.message);
+    console.warn('移除容器失败:', e.message);
   }
 
-  const imgData = canvas.toDataURL('image/jpeg', 0.95);
+  console.log('📐 canvas 尺寸:', canvas.width, 'x', canvas.height);
+  console.log('🔍 canvas 类型:', typeof canvas, canvas.constructor.name);
+  console.log('🔍 toDataURL 是否存在:', typeof canvas.toDataURL);
 
-  const doc = new jsPDF('p', 'mm', 'a4');
+  // ✅ 逐步执行，精确定位哪一步出错
+  let imgData;
+  try {
+    console.log('🖼️ 正在生成图片数据...');
+    imgData = canvas.toDataURL('image/jpeg', 0.95);
+    console.log('🖼️ 图片数据生成成功，长度:', imgData.length);
+  } catch (err) {
+    console.error('❌ toDataURL 失败:', err.message, err);
+    throw new Error('图片数据生成失败: ' + err.message);
+  }
+
+  let doc;
+  try {
+    console.log('📄 正在创建 PDF...');
+    doc = new jsPDF('p', 'mm', 'a4');
+    console.log('📄 jsPDF 创建成功');
+  } catch (err) {
+    console.error('❌ jsPDF 创建失败:', err.message, err);
+    throw new Error('jsPDF 初始化失败: ' + err.message);
+  }
+
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 10;
@@ -799,32 +809,47 @@ async function genPDF(text, name) {
 
   const scale = pdfUsableW / canvas.width;
   let yOffset = 0;
+  let pageCount = 0;
 
-  while (yOffset < canvas.height) {
-    const maxSrcH = pdfUsableH / scale;
-    const drawSrcH = Math.min(canvas.height - yOffset, maxSrcH);
-    const drawH = drawSrcH * scale;
+  try {
+    while (yOffset < canvas.height) {
+      const maxSrcH = pdfUsableH / scale;
+      const drawSrcH = Math.min(canvas.height - yOffset, maxSrcH);
+      const drawH = drawSrcH * scale;
 
-    if (yOffset > 0) doc.addPage();
+      if (yOffset > 0) doc.addPage();
 
-    doc.addImage(
-      imgData, 'JPEG',
-      margin, margin,
-      pdfUsableW, drawH,
-      undefined, undefined,
-      0, yOffset,
-      canvas.width, drawSrcH
-    );
+      console.log(`📄 绘制第 ${pageCount + 1} 页: yOffset=${yOffset}, drawSrcH=${drawSrcH}, drawH=${drawH}`);
+      
+      doc.addImage(
+        imgData, 'JPEG',
+        margin, margin,
+        pdfUsableW, drawH,
+        undefined, undefined,
+        0, yOffset,
+        canvas.width, drawSrcH
+      );
 
-    yOffset += drawSrcH;
+      yOffset += drawSrcH;
+      pageCount++;
+    }
+    console.log(`📄 页面绘制完成，共 ${pageCount} 页`);
+  } catch (err) {
+    console.error('❌ 添加页面时失败:', err.message, err);
+    throw new Error('PDF 页面绘制失败: ' + err.message);
   }
 
-  console.log(`📄 PDF 共 ${doc.internal.getNumberOfPages()} 页`);
-  
-  // ✅ 检查 PDF 是否真的生成了
-  const blob = doc.output('blob');
-  console.log('📦 PDF blob 大小:', blob.size, 'bytes');
-  
+  let blob;
+  try {
+    console.log('📦 正在生成 blob...');
+    blob = doc.output('blob');
+    console.log('📦 blob 生成成功，大小:', blob.size, 'bytes');
+  } catch (err) {
+    console.error('❌ blob 生成失败:', err.message, err);
+    throw new Error('blob 生成失败: ' + err.message);
+  }
+
+  console.log('✅ genPDF 全部完成！');
   return { blob, filename: `${name}.pdf` };
 }
 
