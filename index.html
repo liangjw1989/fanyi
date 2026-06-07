@@ -589,7 +589,7 @@ const { blob, filename } = await genPDF(translated, f.name);
       renderAll();
     }
 
-    // ==================== 最终决战版 callProxy (永不空) ====================
+    // ======================== 最终版 callProxy (专门应对双重 JSON) ========================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
 
@@ -601,52 +601,53 @@ async function callProxy(text, target) {
     });
 
     let rawText = await res.text();
-    // 去除 BOM 头
+    // 去除可能存在的 BOM 头
     rawText = rawText.replace(/^\uFEFF/, '');
 
-    console.log("🔥 后端返回原始内容(前300字):", rawText.substring(0, 300));
+    console.log("🔥 后端返回原始内容(前200字):", rawText.substring(0, 200));
 
-    // === 第一阶段：精确提取翻译文本 ===
+    // ============================================================
+    // 🚀 核心解析逻辑：处理双重 JSON 结构
+    // 结构： "{\"code\":0,\"result\":\"{\"文本\":\"...\"}\"}"
+    // ============================================================
     let finalText = null;
 
-    // 方法1：双层 JSON.parse (专门适配你的后端格式)
     try {
-      const outer = JSON.parse(rawText);
-      if (outer.code === 0 && outer.result) {
-        if (typeof outer.result === 'string') {
-          const inner = JSON.parse(outer.result);
-          finalText = inner.文本;
-        } else if (typeof outer.result === 'object') {
-          finalText = outer.result.文本;
+      // 【第一层】解析最外层 JSON (去除外层的引号和转义)
+      const firstParse = JSON.parse(rawText);
+      
+      if (firstParse.code === 0 && firstParse.result) {
+        // 此时 firstParse.result 是一个字符串： "{\"文本\":\"内容...\"}"
+        // 【第二层】解析 result 字段里的 JSON
+        const secondParse = JSON.parse(firstParse.result);
+        
+        if (secondParse && secondParse.文本) {
+          finalText = secondParse.文本;
         }
       }
-    } catch (e) { /* 解析失败，忽略，继续走下一阶段 */ }
-
-    // 方法2：如果方法1失败，使用正则匹配（无论有没有转义符都通杀）
-    if (!finalText) {
-      // 兼容 \"文本\":\"内容\" 和 "文本":"内容"
-      const matches = rawText.match(/(\\?"文本\\?":\\?")([^"]+)/);
-      if (matches && matches[2]) {
-        finalText = matches[2];
+    } catch (e) {
+      // 如果标准的 JSON.parse 失败，兜底用正则提取
+      // 这个正则专门匹配你格式里的 \"文本\":\"内容\"
+      const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
+      if (match && match[1]) {
+        finalText = match[1];
       }
     }
 
-    // ✅ 如果提取成功，清理转义符，返回干净文本
+    // ✅ 如果提取成功，处理一下转义符，让文章段落完美显示
     if (finalText) {
       finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
-      console.log("✅ 提取成功！文本长度:", finalText.length);
+      console.log("✅ 提取成功！翻译文本前100字:", finalText.substring(0, 100) + "...");
       return finalText;
     }
 
-    // === 第二阶段：兜底返回 (非常重要) ===
-    // 如果到这里还没返回，说明解析彻底失败。
-    // 此时返回原始数据，并加上明确的提示，让 PDF 里能看到真实的返回内容。
-    console.error("❌ 所有解析方法都失败！返回原始数据...");
-    return "【解析失败-后端原始返回】\n" + rawText.substring(0, 500) + "...\n...";
+    // 兜底：如果解析彻底失败，返回原始数据，方便排查
+    console.error("❌ 所有解析方法都失败了！返回原始数据");
+    return "【解析失败-原始数据】\n" + rawText.substring(0, 200) + "...";
 
   } catch (err) {
-    console.error("callProxy 网络错误:", err);
-    return "【callProxy 网络错误】";
+    console.error("callProxy 网络或严重错误:", err);
+    return "【网络请求错误】";
   }
 }
       // 👇 重点：头部加了 async
