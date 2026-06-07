@@ -726,141 +726,152 @@ async function genPDF(text, name) {
   let tempDiv = null;
   
   try {
+    console.log('🟢 genPDF 开始执行');
+    console.log('📝 文本长度:', (text || '').length);
+    
     const { jsPDF } = window.jspdf;
-
-    console.log('📝 传入 genPDF 的文本总长度:', (text || '').length);
-
+    console.log('🟢 jsPDF 库已加载');
+    
+    if (!jsPDF) {
+      throw new Error('jsPDF 库未加载');
+    }
+    if (typeof html2canvas !== 'function') {
+      throw new Error('html2canvas 库未加载');
+    }
+    
     const mmToPx = 3.779528;
-    const a4WidthMm = 210;
-    const marginMm = 10;
-    const usableWidthMm = a4WidthMm - 2 * marginMm;
-    const containerWidthPx = Math.floor(usableWidthMm * mmToPx);
-
+    const containerWidthPx = Math.floor((210 - 20) * mmToPx);
+    
     tempDiv = document.createElement('div');
-    tempDiv.style.position = 'fixed';
-    tempDiv.style.left = '0';
-    tempDiv.style.top = '0';
-    tempDiv.style.width = containerWidthPx + 'px';
-    tempDiv.style.padding = '15px';
-    tempDiv.style.boxSizing = 'border-box';
-    tempDiv.style.fontSize = '16px';
-    tempDiv.style.fontFamily = 'SimSun, "宋体", "Noto Serif CJK SC", serif';
-    tempDiv.style.lineHeight = '1.8';
-    tempDiv.style.whiteSpace = 'pre-wrap';
-    tempDiv.style.wordBreak = 'break-word';
-    tempDiv.style.color = '#000';
-    tempDiv.style.background = '#fff';
-    tempDiv.style.opacity = '0';
-    tempDiv.style.pointerEvents = 'none';
-    tempDiv.style.zIndex = '-1';
-
+    tempDiv.style.cssText = `
+      position: fixed; left: 0; top: 0;
+      width: ${containerWidthPx}px;
+      padding: 15px;
+      box-sizing: border-box;
+      font-size: 16px;
+      font-family: SimSun, "宋体", serif;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #000;
+      background: #fff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: -1;
+    `;
+    
     tempDiv.innerText = text || '暂无内容';
     document.body.appendChild(tempDiv);
-
+    console.log('🟢 容器已添加到 DOM');
+    
     await new Promise(r => requestAnimationFrame(r));
     await new Promise(r => requestAnimationFrame(r));
-
+    
     const fullHeightPx = tempDiv.scrollHeight;
-    console.log('📏 容器实际高度:', fullHeightPx, 'px');
-
-    // ✅ 检查 html2canvas 是否正确加载
-    if (typeof html2canvas !== 'function') {
-      throw new Error('html2canvas 未加载，请检查 CDN 引入');
-    }
-
+    console.log('📏 容器高度:', fullHeightPx, 'px');
+    
+    console.log('🟢 开始渲染 canvas...');
     const canvas = await html2canvas(tempDiv, {
       scale: 2,
       useCORS: true,
-      logging: true,
       allowTaint: true,
+      logging: true,
       windowWidth: containerWidthPx,
       windowHeight: fullHeightPx,
     });
-
-    // ✅ 检查 canvas 是否有效
-    if (!canvas || typeof canvas !== 'object' || !canvas.width) {
-      throw new Error('html2canvas 返回了无效的 canvas 对象');
+    
+    console.log('🟢 Canvas 渲染完成');
+    console.log('🔍 canvas 对象:', canvas);
+    console.log('🔍 canvas 类型:', typeof canvas);
+    
+    if (!canvas || !canvas.width || !canvas.height) {
+      throw new Error('html2canvas 返回无效对象，可能是样式或字体问题');
     }
-
-    // 移除容器
+    
+    // 清理容器
     if (tempDiv && tempDiv.parentNode) {
       tempDiv.parentNode.removeChild(tempDiv);
       tempDiv = null;
     }
     console.log('✅ 容器已移除');
-
+    
     console.log('📐 canvas 尺寸:', canvas.width, 'x', canvas.height);
-
+    
+    console.log('🟢 生成图片数据...');
     const imgData = canvas.toDataURL('image/jpeg', 0.95);
-    console.log('🖼️ 图片数据生成成功，长度:', imgData.length);
-
+    console.log('🖼️ 图片数据长度:', imgData.length);
+    
+    if (!imgData || imgData.length < 100) {
+      throw new Error('图片数据异常，长度过短');
+    }
+    
+    console.log('🟢 创建 PDF...');
     const doc = new jsPDF('p', 'mm', 'a4');
-    console.log('📄 jsPDF 创建成功');
-
+    
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
     const margin = 10;
-    const pdfUsableW = pageW - 2 * margin;
-    const pdfUsableH = pageH - 2 * margin;
-
-    const scale = pdfUsableW / canvas.width;
+    const usableW = pageW - 2 * margin;
+    const usableH = pageH - 2 * margin;
+    
+    const scale = usableW / canvas.width;
     let yOffset = 0;
     let pageCount = 0;
-
+    
+    console.log('🟢 开始分页绘制...');
     while (yOffset < canvas.height) {
-      const maxSrcH = pdfUsableH / scale;
+      const maxSrcH = usableH / scale;
       const drawSrcH = Math.min(canvas.height - yOffset, maxSrcH);
       const drawH = drawSrcH * scale;
-
+      
       if (yOffset > 0) doc.addPage();
-
+      
       doc.addImage(
         imgData, 'JPEG',
         margin, margin,
-        pdfUsableW, drawH,
+        usableW, drawH,
         undefined, undefined,
         0, yOffset,
         canvas.width, drawSrcH
       );
-
+      
       yOffset += drawSrcH;
       pageCount++;
     }
-    console.log(`📄 页面绘制完成，共 ${pageCount} 页`);
-
+    
+    console.log(`📄 PDF 共 ${pageCount} 页`);
+    
     const blob = doc.output('blob');
-    console.log('📦 blob 生成成功，大小:', blob.size, 'bytes');
-    console.log('✅ genPDF 全部完成！');
+    console.log('📦 Blob 大小:', blob.size, 'bytes');
+    console.log('✅ genPDF 成功完成！');
     
     return { blob, filename: `${name}.pdf` };
     
   } catch (err) {
-    console.error('❌ genPDF 内部错误:', err.message);
-    console.error('❌ 错误堆栈:', err.stack);
+    console.error('❌❌❌ genPDF 出错 ❌❌❌');
+    console.error('错误信息:', err.message);
+    console.error('错误类型:', err.constructor.name);
+    console.error('完整错误:', err);
     
-    // 确保清理容器
+    // 清理
     if (tempDiv && tempDiv.parentNode) {
-      try {
-        tempDiv.parentNode.removeChild(tempDiv);
-      } catch (e) {}
+      try { tempDiv.parentNode.removeChild(tempDiv); } catch(e) {}
     }
     
-    // 返回错误 PDF（使用全局 jsPDF）
+    // 尝试生成错误 PDF
     try {
-      const { jsPDF: JsPDF } = window.jspdf || {};
-      if (JsPDF) {
-        const doc = new JsPDF();
-        doc.setFontSize(12);
-        doc.text('生成 PDF 时出错:', 10, 10);
-        doc.setFontSize(10);
-        doc.text(err.message, 10, 20);
-        return { blob: doc.output('blob'), filename: `${name}_error.pdf` };
+      const { jsPDF } = window.jspdf;
+      if (jsPDF) {
+        const errorDoc = new jsPDF();
+        errorDoc.text('PDF 生成失败', 10, 10);
+        errorDoc.text('错误: ' + err.message, 10, 20);
+        return { blob: errorDoc.output('blob'), filename: `${name}_error.pdf` };
       }
     } catch (e) {
-      console.error('生成错误 PDF 也失败了:', e);
+      console.error('连错误 PDF 都生成不了:', e);
     }
     
-    throw err; // 向上抛出，让 translateFile 处理
+    throw err;
   }
 }
 
