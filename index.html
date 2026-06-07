@@ -601,54 +601,38 @@ async function callProxy(text, target) {
     });
 
     let rawText = await res.text();
-    // 去除 BOM 头
-    rawText = rawText.replace(/^\uFEFF/, '');
-    
-    console.log("🔥 原始返回:", rawText.substring(0, 150) + "...");
+    rawText = rawText.replace(/^\uFEFF/, ''); // 去 BOM
 
-    // ============================================================
-    // 🚀 核心：直接剥掉最外层的双引号，然后 JSON.parse 两层
-    // 你的数据格式是： "{\"code\":0,\"result\":\"{\"文本\":\"...\"}\"}"
-    // ============================================================
-    let finalText = null;
+    console.log("🔥 原始返回:", rawText.substring(0, 200) + "...");
 
+    // 1. 优先尝试正常 JSON 解析
     try {
-      // 1. 去掉最外层的双引号
-      let cleanStr = rawText.trim();
-      if (cleanStr.startsWith('"') && cleanStr.endsWith('"')) {
-        cleanStr = cleanStr.slice(1, -1);
-        // 把内部转义的 \" 还原成 "
-        cleanStr = cleanStr.replace(/\\"/g, '"');
-      }
-
-      // 2. 解析第一层 JSON
-      const outer = JSON.parse(cleanStr);
-
-      // 3. 解析第二层 JSON (result 字段)
+      const outer = JSON.parse(rawText);
       if (outer.code === 0 && outer.result) {
-        // 注意：outer.result 此时应该是一个 JSON 字符串
-        const inner = JSON.parse(outer.result);
-        finalText = inner.文本;
+        const inner = JSON.parse(outer.result); // 如果 result 是 JSON 字符串
+        if (inner["文本"] || inner["文本"]) {
+          return inner["文本"] || inner["文本"];
+        }
       }
     } catch (e) {
-      console.warn("JSON 解析失败，尝试暴力兜底正则...");
-      
-      // 4. 兜底：直接匹配 \"文本\":\"...\"
-      const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
-      if (match && match[1]) {
-        finalText = match[1];
-      }
+      console.warn("标准 JSON 解析失败，使用暴力匹配");
     }
 
-    // ✅ 提取成功，清理转义符
-    if (finalText) {
-      finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
+    // 2. 暴力匹配：同时支持中英文引号
+    // 匹配 "文本":"..." 或 “文本”：“...”
+    const regex = /["“]文本["”]\s*:\s*["“]([^"”]*)["”]/;
+    const match = rawText.match(regex);
+    if (match && match[1]) {
+      let finalText = match[1]
+        .replace(/\\n/g, '\n')
+        .replace(/\\\"/g, '"')
+        .replace(/\\“/g, '“')
+        .replace(/\\”/g, '”');
       console.log("✅ 提取成功！翻译文本前100字:", finalText.substring(0, 100) + "...");
       return finalText;
     }
 
-    // 兜底：返回原始数据
-    console.error("❌ 所有解析方法都失败！返回原始数据");
+    console.error("❌ 提取失败！返回原始数据");
     return rawText;
 
   } catch (err) {
@@ -709,33 +693,32 @@ async function extractText(file, ext) {
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
 
-  // 1. 创建容器
+  // 1. 创建临时容器（宽度略小于 A4 有效宽度，保证文字自动换行）
   const tempDiv = document.createElement('div');
   tempDiv.style.width = '170mm';
   tempDiv.style.padding = '15mm';
   tempDiv.style.fontSize = '14px';
   tempDiv.style.fontFamily = 'SimSun, serif';
   tempDiv.style.lineHeight = '2.0';
-  tempDiv.style.whiteSpace = 'pre-wrap'; // ✅ 保留换行
-  tempDiv.style.wordBreak = 'break-all'; // ✅ 强制断行，防止被压扁
-  
-  // 2. 手动插入换行 (如果文本很长且没有换行)
+  tempDiv.style.whiteSpace = 'pre-wrap';
+  tempDiv.style.wordBreak = 'break-all';
+
+  // 2. 长文本自动插入换行（可选）
   let processedText = text;
   if (processedText && !processedText.includes('\n') && processedText.length > 100) {
     processedText = processedText.replace(/(.{50})/g, '$1\n');
   }
-  
   tempDiv.innerText = processedText || '暂无内容';
   document.body.appendChild(tempDiv);
 
-  // 3. 渲染截图
-  const canvas = await html2canvas(tempDiv, { 
-    scale: 2, 
+  // 3. 渲染为 canvas
+  const canvas = await html2canvas(tempDiv, {
+    scale: 2,
     useCORS: true,
     logging: false
   });
   document.body.removeChild(tempDiv);
-  
+
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
 
   // 4. 初始化 PDF
@@ -746,23 +729,28 @@ async function genPDF(text, name) {
   const usableWidth = pdfWidth - 2 * margin;
   const usableHeight = pdfHeight - 2 * margin;
 
-  // 5. 计算缩放
-  const ratio = Math.min(usableWidth / canvas.width, usableHeight / canvas.height);
-  const imgWidth = canvas.width * ratio;
-  const imgHeight = canvas.height * ratio;
+  // 5. 按宽度等比缩放，高度自然延伸
+  const scale = usableWidth / canvas.width;
+  let yOffset = 0; // 源图 y 坐标(px)
 
-  // 6. 自动分页循环
-  let currentY = 0;
-  while (currentY < imgHeight) {
-    if (currentY > 0) {
-      doc.addPage();
-    }
-    const drawHeight = Math.min(imgHeight - currentY, usableHeight);
-    const cropY = currentY / ratio; 
-    const cropH = drawHeight / ratio;
-    
-    doc.addImage(imgData, 'JPEG', margin, margin, usableWidth, drawHeight, undefined, undefined, 0, cropY, usableWidth / ratio, cropH);
-    currentY += drawHeight;
+  while (yOffset < canvas.height) {
+    const maxSrcH = usableHeight / scale;             // 每页最多能显示的源图高度
+    const drawSrcH = Math.min(canvas.height - yOffset, maxSrcH);
+    const drawH = drawSrcH * scale;                   // 本页绘制的毫米高度
+
+    if (yOffset > 0) doc.addPage();
+
+    doc.addImage(
+      imgData,
+      'JPEG',
+      margin, margin,
+      usableWidth, drawH,
+      undefined, undefined,
+      0, yOffset,                                     // 从源图左上角 (0, yOffset) 开始截取
+      canvas.width, drawSrcH
+    );
+
+    yOffset += drawSrcH;
   }
 
   return { blob: doc.output('blob'), filename: `${name}.pdf` };
