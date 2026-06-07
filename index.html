@@ -701,19 +701,19 @@ async function extractText(file, ext) {
 async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
 
-  // 1. 精确的毫米 -> 像素转换（96dpi 下 1mm = 3.779528px）
+  // 1. 精确换算（96dpi）
   const mmToPx = 3.779528;
   const a4WidthMm = 210;
   const a4HeightMm = 297;
   const marginMm = 10;
-  const usableWidthMm = a4WidthMm - 2 * marginMm; // 190mm
+  const usableWidthMm = a4WidthMm - 2 * marginMm;   // 190mm
   const usableHeightMm = a4HeightMm - 2 * marginMm; // 277mm
-  const containerWidthPx = Math.floor(usableWidthMm * mmToPx); // 约 718px
+  const containerWidthPx = Math.floor(usableWidthMm * mmToPx); // ≈718px
 
-  // 2. 创建绝对定位、不可见的容器，避免被页面样式干扰
+  // 2. 创建容器（完全透明但占据真实空间，保证布局计算正确）
   const tempDiv = document.createElement('div');
-  tempDiv.style.position = 'absolute';
-  tempDiv.style.left = '-9999px';
+  tempDiv.style.position = 'fixed';       // 固定定位，不影响滚动
+  tempDiv.style.left = '0';
   tempDiv.style.top = '0';
   tempDiv.style.width = containerWidthPx + 'px';
   tempDiv.style.padding = '15px';
@@ -725,53 +725,60 @@ async function genPDF(text, name) {
   tempDiv.style.wordBreak = 'break-word';
   tempDiv.style.color = '#000';
   tempDiv.style.background = '#fff';
+  tempDiv.style.visibility = 'visible';   // 必须可见（但可以透明）
+  tempDiv.style.opacity = '0';            // 透明不可见
+  tempDiv.style.pointerEvents = 'none';   // 防止遮挡点击
+  tempDiv.style.zIndex = '-1';           // 置于底层
 
-  // 3. 处理文本（保留原有换行，太长的行自动断行）
-  let processedText = text || '暂无内容';
-  tempDiv.innerText = processedText;
+  tempDiv.innerText = text || '暂无内容';
   document.body.appendChild(tempDiv);
 
-  // 4. 渲染 canvas，注意明确指定窗口尺寸
+  // 3. 强制浏览器完成布局并获取准确高度
+  tempDiv.offsetHeight; // 触发回流
+  await new Promise(resolve => requestAnimationFrame(resolve)); // 等一帧
+
+  const fullHeightPx = tempDiv.scrollHeight;
+  console.log('📏 容器实际高度 (scrollHeight):', fullHeightPx, 'px');
+
+  // 4. 渲染 canvas，显式传入正确高度
   const canvas = await html2canvas(tempDiv, {
     scale: 2,
     useCORS: true,
     logging: false,
     windowWidth: containerWidthPx,
-    windowHeight: tempDiv.scrollHeight
+    windowHeight: fullHeightPx,   // 关键：使用真实的完整高度
   });
+
   document.body.removeChild(tempDiv);
 
-  // ✅ 打印尺寸，便于排查
   console.log('📐 canvas 尺寸:', canvas.width, 'x', canvas.height);
-  console.log('📐 容器宽度:', containerWidthPx, 'canvas宽度/2:', canvas.width / 2);
 
   const imgData = canvas.toDataURL('image/jpeg', 0.95);
 
   // 5. 初始化 PDF
   const doc = new jsPDF('p', 'mm', 'a4');
-  const pageW = doc.internal.pageSize.getWidth();  // 210
-  const pageH = doc.internal.pageSize.getHeight(); // 297
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
   const margin = 10;
   const pdfUsableW = pageW - 2 * margin;
   const pdfUsableH = pageH - 2 * margin;
 
-  // 6. 按宽度缩放，高度自然分页
+  // 6. 按宽度缩放，高度自动分页
   const scale = pdfUsableW / canvas.width;
-  const fullHeight = canvas.height * scale; // 图片总高度（mm）
-  console.log('📏 scale:', scale, 'fullHeight:', fullHeight, 'mm');
+  const totalHeightMm = canvas.height * scale;
 
-  let yOffset = 0; // 源图像素偏移
+  let yOffset = 0;
   while (yOffset < canvas.height) {
-    const maxSrcH = pdfUsableH / scale;             // 一页能容纳的最大源图高度
+    const maxSrcH = pdfUsableH / scale;
     const drawSrcH = Math.min(canvas.height - yOffset, maxSrcH);
-    const drawH = drawSrcH * scale;                 // 本页实际高度 mm
+    const drawH = drawSrcH * scale;
 
     if (yOffset > 0) doc.addPage();
 
     doc.addImage(
       imgData, 'JPEG',
       margin, margin,
-      pdfUsableW, drawH,             // 宽填满，高按比例
+      pdfUsableW, drawH,
       undefined, undefined,
       0, yOffset,
       canvas.width, drawSrcH
@@ -780,6 +787,7 @@ async function genPDF(text, name) {
     yOffset += drawSrcH;
   }
 
+  console.log(`📄 PDF 共 ${doc.internal.getNumberOfPages()} 页`);
   return { blob: doc.output('blob'), filename: `${name}.pdf` };
 }
 
