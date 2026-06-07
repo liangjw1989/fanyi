@@ -589,8 +589,8 @@ const { blob, filename } = await genPDF(translated, f.name);
       renderAll();
     }
 
-    // ======================== 最终永不失效版 callProxy (暴力切分) ========================
-  async function callProxy(text, target) {
+    // ======================== 最终必胜版 callProxy (应对双层 JSON) ========================
+async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
 
   try {
@@ -601,59 +601,55 @@ const { blob, filename } = await genPDF(translated, f.name);
     });
 
     let rawText = await res.text();
-   console.log("💥 我看看 rawText 到底是啥:", rawText); // 👈 加这一行
-    // 去除 BOM 头
-    rawText = rawText.replace(/^\uFEFF/, '');
+    rawText = rawText.replace(/^\uFEFF/, ''); // 去除 BOM 头
     
     console.log("🔥 原始返回:", rawText.substring(0, 100) + "...");
 
-    // === 核心：直接提取 "文本":" 和 下一个 " 之间的内容 ===
-    const prefix = '"文本":"';
-    const startIdx = rawText.indexOf(prefix);
-    
-    if (startIdx !== -1) {
-      let cursor = startIdx + prefix.length;
-      let extracted = '';
-      let depth = 0; // 处理嵌套引号的情况
-      
-      while (cursor < rawText.length) {
-        const char = rawText[cursor];
-        
-        // 处理转义字符
-        if (char === '\\') {
-          extracted += char;
-          if (cursor + 1 < rawText.length) {
-            extracted += rawText[cursor + 1];
-            cursor += 2;
-          }
-          continue;
-        }
-        
-        // 遇到双引号
-        if (char === '"') {
-          // 如果紧挨着的是 }, 说明是真正的结束
-          if (cursor + 1 < rawText.length && rawText[cursor + 1] === '}') {
-            break;
-          }
-        }
-        
-        extracted += char;
-        cursor++;
+    // ============================================================
+    // 🚀 核心：剥洋葱式解析
+    // 数据格式： "{\"code\":0,\"result\":\"{\"文本\":\"内容...\"}\"}"
+    // ============================================================
+    let finalText = null;
+
+    try {
+      // 1. 去除最外层的双引号
+      let cleanStr = rawText.trim();
+      if (cleanStr.startsWith('"') && cleanStr.endsWith('"')) {
+        cleanStr = cleanStr.slice(1, -1);
       }
+
+      // 2. 解析第一层 JSON
+      const outer = JSON.parse(cleanStr);
       
-      // ✅ 清理转义符
-      let finalText = extracted.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
-      console.log("✅ 提取成功！长度:", finalText.length);
+      // 3. 解析第二层 JSON (result 字段)
+      if (outer.code === 0 && outer.result) {
+        // 这里的 outer.result 还是一个字符串： "{\"文本\":\"...\"}"
+        const inner = JSON.parse(outer.result);
+        finalText = inner.文本;
+      }
+    } catch (e) {
+      console.warn("JSON 解析失败，尝试正则兜底...");
+      // 兜底：直接匹配 "文本":"内容"
+      const match = rawText.match(/"文本":"([^"]+)/);
+      if (match && match[1]) {
+        finalText = match[1];
+      }
+    }
+
+    // ✅ 提取成功，清理转义符
+    if (finalText) {
+      finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
+      console.log("✅ 提取成功！文本前100字:", finalText.substring(0, 100) + "...");
       return finalText;
     }
 
     // 兜底：返回原始数据
-    console.error("❌ 提取失败");
+    console.error("❌ 所有解析方法都失败！");
     return rawText;
 
   } catch (err) {
     console.error("callProxy 错误:", err);
-    return "【网络错误】";
+    return "【网络请求错误】";
   }
 }
       // 👇 重点：头部加了 async
