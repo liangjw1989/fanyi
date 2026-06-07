@@ -589,7 +589,7 @@ const { blob, filename } = await genPDF(translated, f.name);
       renderAll();
     }
 
-    // ======================== 最终完胜版 callProxy (保证提取成功) ========================
+    // ======================== 最终完美版 callProxy ========================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
 
@@ -603,47 +603,23 @@ async function callProxy(text, target) {
     let rawText = await res.text();
     rawText = rawText.replace(/^\uFEFF/, ''); // 去除 BOM 头
     
-    console.log("🔥 原始返回:", rawText.substring(0, 100) + "...");
+    // console.log("🔥 原始返回:", rawText.substring(0, 100) + "...");
 
     // ============================================================
-    // 🚀 核心逻辑：剥洋葱式解析你的特殊 JSON 格式
+    // 💡 核心修改：直接匹配 \"文本\":\" 后面的内容
     // ============================================================
-    let finalText = null;
-
-    try {
-      // 1. 去掉最外层的双引号（你的数据最外层有引号）
-      let cleanStr = rawText.trim();
-      if (cleanStr.startsWith('"') && cleanStr.endsWith('"')) {
-        cleanStr = cleanStr.slice(1, -1);
-      }
-
-      // 2. 解析第一层 JSON
-      const outer = JSON.parse(cleanStr);
-
-      // 3. 解析 result 字段里的 JSON（第二层）
-      if (outer.code === 0 && outer.result) {
-        // 注意：result 还包着一层 JSON 字符串
-        const inner = JSON.parse(outer.result);
-        finalText = inner.文本;
-      }
-    } catch (e) {
-      console.warn("JSON 层层解析失败，尝试暴力正则兜底...");
-      // 4. 如果正规解析失败，用最稳妥的正则 "文本":"内容"
-      const matches = rawText.match(/"文本":"([^"]+)/);
-      if (matches && matches[1]) {
-        finalText = matches[1];
-      }
-    }
-
-    // ✅ 提取成功后，清理转义符，解决 PDF 压扁和换行问题
-    if (finalText) {
+    const match = rawText.match(/\\"文本\\":\\"([^"]+)/);
+    
+    if (match && match[1]) {
+      let finalText = match[1];
+      // ✅ 清理转义符，让 \n 变成真正的换行，防止 PDF 压扁
       finalText = finalText.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
       console.log("✅ 提取成功！翻译文本前100字:", finalText.substring(0, 100) + "...");
       return finalText;
     }
 
-    // 兜底：返回原始数据，方便排查
-    console.error("❌ 所有解析方法都失败！返回原始数据");
+    // 兜底：如果提取失败，返回原始数据
+    console.error("❌ 提取失败！返回原始数据");
     return rawText;
 
   } catch (err) {
@@ -700,21 +676,21 @@ async function extractText(file, ext) {
       }
     }
 
-    // ==================== 最终版 genPDF (自动美化排版) ====================
-  async function genPDF(text, name) {
+    // ======================== 最终完美版 genPDF ========================
+async function genPDF(text, name) {
   const { jsPDF } = window.jspdf;
 
-  // 1. 创建一个容器来渲染文本
+  // 1. 创建容器
   const tempDiv = document.createElement('div');
   tempDiv.style.width = '170mm';
   tempDiv.style.padding = '15mm';
   tempDiv.style.fontSize = '14px';
   tempDiv.style.fontFamily = 'SimSun, serif';
   tempDiv.style.lineHeight = '2.0';
-  tempDiv.style.whiteSpace = 'pre-wrap'; // 保留换行
-  tempDiv.style.wordBreak = 'break-all'; // 强制断行
+  tempDiv.style.whiteSpace = 'pre-wrap'; // ✅ 保留换行
+  tempDiv.style.wordBreak = 'break-all'; // ✅ 强制断行，防止被压扁
   
-  // 2. 这里非常重要：如果文本太长没有换行，手动插入换行符
+  // 2. 手动插入换行 (如果文本很长且没有换行)
   let processedText = text;
   if (processedText && !processedText.includes('\n') && processedText.length > 100) {
     processedText = processedText.replace(/(.{50})/g, '$1\n');
@@ -723,7 +699,7 @@ async function extractText(file, ext) {
   tempDiv.innerText = processedText || '暂无内容';
   document.body.appendChild(tempDiv);
 
-  // 3. 渲染并截图
+  // 3. 渲染截图
   const canvas = await html2canvas(tempDiv, { 
     scale: 2, 
     useCORS: true,
@@ -733,7 +709,7 @@ async function extractText(file, ext) {
   
   const imgData = canvas.toDataURL('image/jpeg', 1.0);
 
-  // 4. 生成 PDF
+  // 4. 初始化 PDF
   const doc = new jsPDF('p', 'mm', 'a4');
   const pdfWidth = doc.internal.pageSize.getWidth();
   const pdfHeight = doc.internal.pageSize.getHeight();
@@ -746,7 +722,7 @@ async function extractText(file, ext) {
   const imgWidth = canvas.width * ratio;
   const imgHeight = canvas.height * ratio;
 
-  // 6. 自动分页
+  // 6. 自动分页循环
   let currentY = 0;
   while (currentY < imgHeight) {
     if (currentY > 0) {
