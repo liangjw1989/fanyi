@@ -1450,96 +1450,98 @@ console.log('🌍 翻译结果总长度:', translated.length);
   }
 
   // ==================== genPDF ====================
-  // ==================== 段落友好版 genPDF（分页截图，保留段落） ====================
+  // ==================== 高级排版 genPDF（缩进、标题加粗、空行保留） ====================
 async function genPDF(text, name) {
-  let container = null;
   try {
     const { jsPDF } = window.jspdf;
-    if (!jsPDF || typeof html2canvas !== 'function') throw new Error('依赖库未加载');
+    if (!jsPDF) throw new Error('jsPDF 库未加载');
 
-    // -------- 1. 文本预处理：保留双换行作为段落，清理多余空行 --------
+    // -------- 1. 文本预处理 --------
     let processedText = text || '暂无内容';
-    // 不插入句号换行，只规范化空行
-    processedText = processedText.replace(/\n{3,}/g, '\n\n');
+    // 不添加额外句号换行，保留原有 \n
+    processedText = processedText.replace(/\n{3,}/g, '\n\n'); // 最多连续两个换行
 
-    // -------- 2. 尺寸计算 --------
-    const mmToPx = 3.779528;
-    const marginMm = 12;
-    const usableWidthMm = 210 - marginMm * 2;
-    const usableHeightMm = 297 - marginMm * 2;
-    const cssWidth = Math.floor(usableWidthMm * mmToPx);
-    const cssPageHeight = Math.floor(usableHeightMm * mmToPx);
-    const scale = 2;
-
-    // -------- 3. 创建分页容器 --------
-    container = document.createElement('div');
-    container.style.cssText = `
-      position: absolute; left: -9999px; top: 0;
-      width: ${cssWidth}px;
-      height: ${cssPageHeight}px;
-      overflow: hidden;
-      margin: 0;
-      padding: 0;
-    `;
-
-    const inner = document.createElement('div');
-    inner.style.cssText = `
-      width: 100%;
-      padding: 18px;
-      box-sizing: border-box;
-      font-size: 17px;
-      font-family: "SimSun", "宋体", "Noto Serif CJK SC", serif;
-      line-height: 1.9;
-      white-space: pre-wrap;
-      word-break: break-word;
-      color: #000;
-      background: #fff;
-    `;
-    inner.innerText = processedText;
-    container.appendChild(inner);
-    document.body.appendChild(container);
-
-    // 等待布局
-    await new Promise(r => requestAnimationFrame(r));
-    await new Promise(r => requestAnimationFrame(r));
-
-    const totalHeight = container.scrollHeight;
-    console.log('📏 总内容高度:', totalHeight, 'px');
-
-    // -------- 4. 初始化 PDF --------
+    // -------- 2. 初始化 PDF --------
     const doc = new jsPDF('p', 'mm', 'a4');
-    let pageCount = 0;
-    let currentScroll = 0;
+    const pageWidth = doc.internal.pageSize.getWidth();    // 210
+    const pageHeight = doc.internal.pageSize.getHeight();  // 297
+    const margin = 15;
+    const maxWidth = pageWidth - margin * 2;  // 180mm
 
-    // -------- 5. 逐页截图 --------
-    while (currentScroll < totalHeight) {
-      container.scrollTop = currentScroll;
-      await new Promise(r => requestAnimationFrame(r));
+    // 字体设置：尝试使用 SimSun 字体（中文正常）
+    doc.setFont('SimSun', 'normal');
+    // 备用字体设置，如果 SimSun 不生效，可尝试 'helvetica' + 手动指定中文
+    // doc.addFont('https://cdn.jsdelivr.net/npm/simsum-font@0.1.0/SimSun.ttf', 'SimSun', 'normal'); // 可选网络字体
 
-      const canvas = await html2canvas(container, {
-        scale: scale,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-      });
+    // 字号与行高
+    const baseFontSize = 12;
+    const titleFontSize = 14;    // 标题字号
+    const lineHeight = 7;        // 行高 (mm)
+    const indentWidth = 7;       // 首行缩进量 (mm) 约两个汉字
+    const maxLinesPerPage = Math.floor((pageHeight - margin * 2) / lineHeight);
 
-      console.log(`📐 第 ${pageCount + 1} 页 canvas: ${canvas.width} x ${canvas.height}`);
+    // -------- 3. 分行处理 --------
+    const lines = processedText.split('\n');
+    let currentLine = 0;
+    let pageCount = 1;
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.92);
-      if (pageCount > 0) doc.addPage();
-
-      const imgWidthMm = usableWidthMm;
-      const imgHeightMm = (canvas.height / (cssWidth * scale)) * imgWidthMm;
-      doc.addImage(imgData, 'JPEG', marginMm, marginMm, imgWidthMm, imgHeightMm);
-
-      currentScroll += cssPageHeight;
+    function addNewPage() {
+      doc.addPage();
       pageCount++;
+      currentLine = 0;
     }
 
-    // 清理
-    if (container && container.parentNode) {
-      container.parentNode.removeChild(container);
-      container = null;
+    function writeLine(str, fontSize = baseFontSize, bold = false, indent = 0) {
+      if (currentLine >= maxLinesPerPage) {
+        addNewPage();
+      }
+      const y = margin + currentLine * lineHeight;
+      const x = margin + indent;
+      doc.setFontSize(fontSize);
+      doc.setFont('SimSun', bold ? 'bold' : 'normal');
+      // 拆分超长行（自动换行），使用 maxWidth - indent
+      const splitted = doc.splitTextToSize(str, maxWidth - indent);
+      for (let i = 0; i < splitted.length; i++) {
+        if (currentLine >= maxLinesPerPage) {
+          addNewPage();
+          // 重算 y
+          const newY = margin + currentLine * lineHeight;
+          doc.text(splitted[i], x, newY);
+        } else {
+          doc.text(splitted[i], x, margin + currentLine * lineHeight);
+        }
+        if (i < splitted.length - 1) {
+          currentLine++;
+        }
+      }
+      currentLine++;
+    }
+
+    // -------- 4. 识别标题与普通段落 --------
+    for (let i = 0; i < lines.length; i++) {
+      const rawLine = lines[i];
+      const trimmed = rawLine.trim();
+
+      if (trimmed === '') {
+        // 空行 → 段落间距（只加一个空行）
+        writeLine(' ', baseFontSize, false, 0);
+        continue;
+      }
+
+      // 判断是否为标题：行长短且包含数字序号或特定关键词，或长度<25且无句末标点
+      const isTitle = (
+        trimmed.length < 40 &&
+        !/[。！？\.!\?]$/.test(trimmed) &&
+        /^[\d一二三四五六七八九十]+[\.\、\s]/.test(trimmed) // 如“1.” “一、”
+      ) || trimmed.length < 20;
+
+      if (isTitle) {
+        // 标题：加粗、稍大字号、不缩进
+        writeLine(trimmed, titleFontSize, true, 0);
+      } else {
+        // 普通段落：首行缩进两个汉字宽度
+        writeLine(trimmed, baseFontSize, false, indentWidth);
+      }
     }
 
     console.log(`✅ PDF 共 ${pageCount} 页`);
@@ -1547,9 +1549,6 @@ async function genPDF(text, name) {
     return { blob, filename: `${name}.pdf` };
 
   } catch (err) {
-    if (container && container.parentNode) {
-      try { container.parentNode.removeChild(container); } catch(e) {}
-    }
     console.error('genPDF 出错:', err);
     try {
       const { jsPDF } = window.jspdf;
