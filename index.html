@@ -1250,10 +1250,55 @@
     return text.trim();
   }
 
-  // ==================== 翻译核心 callProxy（终极清洗版） ====================
+  // ==================== 翻译核心 callProxy（长文本自动拆句、零 JSON 残留） ====================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
+  const MAX_CHARS_PER_REQUEST = 3000;   // 单次请求最大字符数
 
+  // 内部清洗：从第一个汉字/字母/数字开始，到最后一个结束，去掉 JSON 外壳
+  const deepClean = (str) => {
+    if (!str) return '';
+    // 找到第一个汉字/英文字母/数字的位置
+    const start = str.search(/[\u4e00-\u9fa5a-zA-Z0-9]/);
+    // 找到最后一个汉字/英文字母/数字的位置
+    const end = str.search(/[\u4e00-\u9fa5a-zA-Z0-9](?!.*[\u4e00-\u9fa5a-zA-Z0-9])/);
+    if (start !== -1 && end !== -1 && end >= start) {
+      return str.substring(start, end + 1).trim();
+    }
+    return str.trim();
+  };
+
+  // 如果文本太长，按句号/换行切分成句子数组，递归翻译
+  if (text.length > MAX_CHARS_PER_REQUEST) {
+    const sentences = text.match(/[^。！？\.!\?\n]+[。！？\.!\?\n]+|[^。！？\.!\?\n]+$/g) || [text];
+    const batches = [];
+    let currentBatch = '';
+    for (const sentence of sentences) {
+      if ((currentBatch + sentence).length > MAX_CHARS_PER_REQUEST && currentBatch) {
+        batches.push(currentBatch.trim());
+        currentBatch = sentence;
+      } else {
+        currentBatch += sentence;
+      }
+    }
+    if (currentBatch.trim()) batches.push(currentBatch.trim());
+
+    console.log(`📦 文本过长，分为 ${batches.length} 段请求翻译`);
+    const results = [];
+    for (const batch of batches) {
+      const result = await callProxySingle(batch, target);
+      results.push(result);
+    }
+    return results.join('');  // 合并返回
+  }
+
+  // 短文本直接请求
+  return await callProxySingle(text, target);
+}
+
+// 单次请求的核心逻辑
+async function callProxySingle(text, target) {
+  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
   try {
     const res = await fetch(backendUrl, {
       method: 'POST',
@@ -1265,29 +1310,12 @@ async function callProxy(text, target) {
     rawText = rawText.replace(/^\uFEFF/, '').trim();
     console.log("🔥 原始返回前 500 字:", rawText.substring(0, 500));
 
-    // 最终清洗：直接提取从第一个汉字到最后一个汉字（含换行、字母、数字）
-    const smartClean = (str) => {
-      if (!str) return '';
-      // 匹配第一个非纯 ASCII 符号的中文/日韩字符或字母数字
-      const match = str.match(/[\u4e00-\u9fa5a-zA-Z0-9].*[\u4e00-\u9fa5a-zA-Z0-9]/s);
-      if (match) {
-        // 进一步去除开头仍可能残留的 "} 、 "code 等
-        let cleaned = match[0]
-          .replace(/^["']\s*\{?\s*"code"\s*:\s*0\s*,\s*"result"\s*:\s*["']/, '')
-          .replace(/["']\s*\}?\s*["']$/, '')
-          .trim();
-        // 如果去掉后变得很短，返回原 match
-        return cleaned.length > 5 ? cleaned : match[0];
-      }
-      return str;
-    };
-
-    // 1. 解析外层 JSON
+    // 1. 尝试 JSON 解析
     try {
       const outer = JSON.parse(rawText);
       if (outer && outer.result) {
         if (typeof outer.result === 'string') {
-          const cleaned = smartClean(outer.result);
+          const cleaned = deepClean(outer.result);
           console.log("✅ JSON 解析成功，清洗后长度:", cleaned.length);
           return cleaned;
         }
@@ -1304,7 +1332,7 @@ async function callProxy(text, target) {
           };
           findChinese(outer.result);
           if (longest) {
-            const cleaned = smartClean(longest);
+            const cleaned = deepClean(longest);
             console.log("✅ 从 result 对象提取，清洗后长度:", cleaned.length);
             return cleaned;
           }
@@ -1317,14 +1345,14 @@ async function callProxy(text, target) {
       const fixed = rawText.replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'");
       const outer = JSON.parse(fixed);
       if (outer && outer.result && typeof outer.result === 'string') {
-        const cleaned = smartClean(outer.result);
+        const cleaned = deepClean(outer.result);
         console.log("✅ 中文引号修复后提取，清洗后长度:", cleaned.length);
         return cleaned;
       }
     } catch (e) {}
 
-    // 3. 兜底：直接对原始字符串做 smartClean
-    const fallback = smartClean(rawText);
+    // 3. 直接对原始字符串进行深度清洗
+    const fallback = deepClean(rawText);
     console.log("⚠️ 兜底提取，长度:", fallback.length);
     return fallback;
 
@@ -1332,6 +1360,19 @@ async function callProxy(text, target) {
     console.error("callProxy 网络错误:", err);
     return "【网络请求错误】";
   }
+}
+
+// 独立的深度清洗函数
+function deepClean(str) {
+  if (!str) return '';
+  const start = str.search(/[\u4e00-\u9fa5a-zA-Z0-9]/);
+  const matches = [...str.matchAll(/[\u4e00-\u9fa5a-zA-Z0-9]/g)];
+  if (matches.length === 0) return str;
+  const end = matches[matches.length - 1].index;
+  if (start !== -1 && end >= start) {
+    return str.substring(start, end + 1).trim();
+  }
+  return str.trim();
 }
 
  // 精准更新单个文件的进度条和状态，不触发全列表刷新
@@ -1348,10 +1389,10 @@ function updateFileProgress(fileObj) {
 } 
 
   // ==================== translateFile ====================
-  // ==================== 按原文段落翻译 + 进度平滑更新 ====================
+  // ==================== 按原文段落翻译 + 长段落分句 + 进度平滑 ====================
 async function translateFile(f) {
   f.status = 'extracting'; f.progress = 0;
-  updateFileProgress(f);   // 初始进度显示
+  updateFileProgress(f);
 
   try {
     const text = await extractText(f.file, f.ext);
@@ -1362,23 +1403,32 @@ async function translateFile(f) {
     f.status = 'translating'; f.progress = 30;
     updateFileProgress(f);
 
-    // ========== 按原文段落翻译（保留结构） ==========
-    // 将原文按空行拆分成真实段落
-    const rawParagraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
-    const translatedParagraphs = [];
+    // 1. 按空行拆分成段落
+    let paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+    // 2. 如果段落数太少（比如全文只有一个大段落），再尝试按两个换行拆分
+    if (paragraphs.length <= 2 && text.includes('\n')) {
+      paragraphs = text.split(/\n\n/).filter(p => p.trim().length > 0);
+    }
+    // 3. 如果还是没有合适的段落，按每 2000 字符强制分段（保留句号边界）
+    if (paragraphs.length === 0) {
+      paragraphs = [text];
+    }
 
-    for (let i = 0; i < rawParagraphs.length; i++) {
-      const para = rawParagraphs[i];
-      // 每个段落单独翻译
+    const translatedParagraphs = [];
+    const total = paragraphs.length;
+
+    for (let i = 0; i < total; i++) {
+      const para = paragraphs[i];
+      // 翻译单个段落（callProxy 内部会自动处理超长段落）
       const translatedPara = await callProxy(para, f.targetLang);
       translatedParagraphs.push(translatedPara);
 
-      // 更新进度（基于段落数）
-      f.progress = Math.floor(30 + (i / rawParagraphs.length) * 40);
+      // 更新进度
+      f.progress = Math.floor(30 + (i / total) * 40);
       updateFileProgress(f);
     }
 
-    // 用两个换行符连接翻译后的段落，保持段落间距
+    // 使用两个换行符连接，保持段落间距
     let translated = translatedParagraphs.join('\n\n');
     f.translatedText = translated;
     f.progress = 60;
@@ -1392,7 +1442,6 @@ async function translateFile(f) {
     f.status = 'done';
     f.progress = 100;
 
-    // 从待处理列表移除，加入已完成列表
     state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
     state.completed.push(f);
     addRecord(f);
@@ -1403,8 +1452,7 @@ async function translateFile(f) {
     showToast(`翻译失败: ${e.message}`, true);
   }
 
-  // 最后才全量刷新界面一次（避免中间跳动）
-  renderAll();
+  renderAll(); // 最终刷新界面
 }
 
   // ==================== convertFile ====================
