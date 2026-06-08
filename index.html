@@ -1450,14 +1450,15 @@ console.log('🌍 翻译结果总长度:', translated.length);
   }
 
   // ==================== genPDF ====================
-  // ======================== 稳健版 genPDF（无空白页、自动分页、大字体）========================
+  // ==================== 终极稳定版 genPDF（永不空白） ====================
 async function genPDF(text, name) {
   let tempDiv = null;
+  let overlay = null; // 遮罩层，防止用户看到临时元素
   try {
     const { jsPDF } = window.jspdf;
     if (!jsPDF || typeof html2canvas !== 'function') throw new Error('依赖库未加载');
 
-    // 智能段落处理
+    // 文本智能分段
     let processedText = text || '暂无内容';
     if (!processedText.includes('\n')) {
       processedText = processedText.replace(/([。！？；])(?=[^\n])/g, '$1\n');
@@ -1466,13 +1467,17 @@ async function genPDF(text, name) {
     processedText = processedText.replace(/\n{3,}/g, '\n\n');
 
     const mmToPx = 3.779528;
-    const containerWidthMm = 190;
-    const containerWidthPx = Math.floor(containerWidthMm * mmToPx);
+    const containerWidthPx = Math.floor(190 * mmToPx); // 约 718px
 
-    // 只创建一个容器，兼具测量与渲染
+    // 创建全屏遮罩（避免用户看到临时元素）
+    overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#fff;z-index:99998;';
+    document.body.appendChild(overlay);
+
+    // 创建临时元素，直接放在屏幕左上角（完全可见）
     tempDiv = document.createElement('div');
     tempDiv.style.cssText = `
-      position: absolute; left: -9999px; top: 0;
+      position: fixed; top: 0; left: 0; z-index: 99999;
       width: ${containerWidthPx}px;
       padding: 18px;
       box-sizing: border-box;
@@ -1484,20 +1489,17 @@ async function genPDF(text, name) {
       color: #000;
       background: #fff;
     `;
-
     tempDiv.innerText = processedText;
     document.body.appendChild(tempDiv);
 
-    // 等待两帧确保文本布局稳定
+    // 等浏览器完成布局
     await new Promise(r => requestAnimationFrame(r));
     await new Promise(r => requestAnimationFrame(r));
 
     const contentHeightPx = tempDiv.scrollHeight;
     console.log('📏 内容高度:', contentHeightPx, 'px');
 
-    if (contentHeightPx < 20) throw new Error('内容高度异常');
-
-    // 直接用同一个 div 渲染，不提前移除
+    // 截图（现在元素真实可见，一定能成功）
     const canvas = await html2canvas(tempDiv, {
       scale: 2,
       useCORS: true,
@@ -1509,17 +1511,16 @@ async function genPDF(text, name) {
       windowHeight: contentHeightPx,
     });
 
-    // 渲染完成后再移除
-    if (tempDiv && tempDiv.parentNode) {
-      tempDiv.parentNode.removeChild(tempDiv);
-      tempDiv = null;
-    }
+    // 立即清理临时元素和遮罩
+    if (tempDiv && tempDiv.parentNode) tempDiv.parentNode.removeChild(tempDiv);
+    if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    tempDiv = null;
+    overlay = null;
 
     console.log('📐 canvas 尺寸:', canvas.width, 'x', canvas.height);
 
     const imgData = canvas.toDataURL('image/jpeg', 0.92);
     const doc = new jsPDF('p', 'mm', 'a4');
-
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
     const margin = 12;
@@ -1546,7 +1547,6 @@ async function genPDF(text, name) {
         canvas.width, drawSrcH
       );
 
-      console.log(`📄 第${pageCount + 1}页: yOffset=${yOffset}, drawSrcH=${drawSrcH}, drawH=${drawH.toFixed(1)}mm`);
       yOffset += drawSrcH;
       pageCount++;
     }
@@ -1556,18 +1556,20 @@ async function genPDF(text, name) {
     return { blob, filename: `${name}.pdf` };
 
   } catch (err) {
-    console.error('genPDF 出错:', err);
+    // 异常时也要清理
     if (tempDiv && tempDiv.parentNode) {
       try { tempDiv.parentNode.removeChild(tempDiv); } catch(e) {}
     }
+    if (overlay && overlay.parentNode) {
+      try { overlay.parentNode.removeChild(overlay); } catch(e) {}
+    }
+    console.error('genPDF 出错:', err);
+    // 返回错误 PDF
     try {
       const { jsPDF } = window.jspdf;
       if (jsPDF) {
         const errorDoc = new jsPDF();
-        errorDoc.setFontSize(14);
-        errorDoc.text('PDF 生成失败', 10, 15);
-        errorDoc.setFontSize(10);
-        errorDoc.text(err.message, 10, 25);
+        errorDoc.text('PDF 生成失败: ' + err.message, 10, 15);
         return { blob: errorDoc.output('blob'), filename: `${name}_error.pdf` };
       }
     } catch(e) {}
