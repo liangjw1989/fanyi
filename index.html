@@ -1450,14 +1450,13 @@ console.log('🌍 翻译结果总长度:', translated.length);
   }
 
   // ==================== genPDF ====================
-  // ==================== 最终极稳定版 genPDF（无遮罩，绝对可见） ====================
+  // ==================== 终极文本型 genPDF（不需要 html2canvas） ====================
 async function genPDF(text, name) {
-  let tempDiv = null;
   try {
     const { jsPDF } = window.jspdf;
-    if (!jsPDF || typeof html2canvas !== 'function') throw new Error('依赖库未加载');
+    if (!jsPDF) throw new Error('jsPDF 库未加载');
 
-    // 智能段落处理
+    // 1. 文本预处理（段落、换行）
     let processedText = text || '暂无内容';
     if (!processedText.includes('\n')) {
       processedText = processedText.replace(/([。！？；])(?=[^\n])/g, '$1\n');
@@ -1465,79 +1464,50 @@ async function genPDF(text, name) {
     }
     processedText = processedText.replace(/\n{3,}/g, '\n\n');
 
-    const mmToPx = 3.779528;
-    const containerWidthPx = Math.floor(190 * mmToPx); // 约 718px
+    // 2. 初始化 PDF
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();   // 210
+    const pageHeight = doc.internal.pageSize.getHeight(); // 297
+    const margin = 15;
+    const maxWidth = pageWidth - margin * 2;   // 可写宽度 180mm
+    const lineHeight = 7;                      // 行高 (mm) 对应字号约 5mm≈14px
+    const maxLinesPerPage = Math.floor((pageHeight - margin * 2) / lineHeight);
 
-    // 创建一个完全可见的临时元素（放在屏幕左上角，白色背景覆盖）
-    tempDiv = document.createElement('div');
-    tempDiv.style.cssText = `
-      position: fixed; top: 0; left: 0; z-index: 99999;
-      width: ${containerWidthPx}px;
-      padding: 18px;
-      box-sizing: border-box;
-      font-size: 17px;
-      font-family: "SimSun", "宋体", "Noto Serif CJK SC", serif;
-      line-height: 1.9;
-      white-space: pre-wrap;
-      word-break: break-word;
-      color: #000;
-      background: #fff;
-    `;
-    tempDiv.innerText = processedText;
-    document.body.appendChild(tempDiv);
+    // 3. 设置字体（使用内置的 courier 等宽字体，或 helvetica，中文会回退到系统默认）
+    //    中文会由浏览器/系统默认中文字体渲染，可以显示。
+    doc.setFont('courier');  // 等宽，适合排版
+    doc.setFontSize(12);
 
-    // 等浏览器完成布局
-    await new Promise(r => requestAnimationFrame(r));
-    await new Promise(r => requestAnimationFrame(r));
+    // 4. 分行处理
+    const paragraphs = processedText.split('\n');
+    let currentLine = 0;
+    let pageCount = 1;
 
-    console.log('📏 内容高度:', tempDiv.scrollHeight, 'px');
-
-    // 直接用 html2canvas 渲染（不传 width/height/windowWidth/Height，用元素自身尺寸）
-    const canvas = await html2canvas(tempDiv, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-    });
-
-    // 立即移除临时元素
-    if (tempDiv && tempDiv.parentNode) {
-      tempDiv.parentNode.removeChild(tempDiv);
-      tempDiv = null;
+    // 辅助函数：添加一行并检查分页
+    function addLine(str) {
+      if (currentLine >= maxLinesPerPage) {
+        doc.addPage();
+        pageCount++;
+        currentLine = 0;
+      }
+      const y = margin + currentLine * lineHeight;
+      doc.text(str, margin, y, { maxWidth: maxWidth });
+      currentLine++;
     }
 
-    console.log('📐 canvas 尺寸:', canvas.width, 'x', canvas.height);
-
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
-    const doc = new jsPDF('p', 'mm', 'a4');
-    const pageW = doc.internal.pageSize.getWidth();
-    const pageH = doc.internal.pageSize.getHeight();
-    const margin = 12;
-    const usableW = pageW - 2 * margin;
-    const usableH = pageH - 2 * margin;
-
-    const scale = usableW / canvas.width;
-    let yOffset = 0;
-    let pageCount = 0;
-
-    while (yOffset < canvas.height) {
-      const maxSrcH = Math.floor(usableH / scale);
-      const drawSrcH = Math.min(canvas.height - yOffset, maxSrcH);
-      const drawH = drawSrcH * scale;
-
-      if (yOffset > 0) doc.addPage();
-
-      doc.addImage(
-        imgData, 'JPEG',
-        margin, margin,
-        usableW, drawH,
-        undefined, undefined,
-        0, yOffset,
-        canvas.width, drawSrcH
-      );
-
-      yOffset += drawSrcH;
-      pageCount++;
+    // 5. 逐段绘制
+    for (let para of paragraphs) {
+      if (para.trim() === '') {
+        // 空行（段落间距）
+        addLine('');
+        continue;
+      }
+      // 自动换行：利用 jsPDF 的 maxWidth 特性，但需要手动分行才能精确控制分页
+      // 简单做法：用 doc.splitTextToSize 得到行数组
+      const lines = doc.splitTextToSize(para, maxWidth);
+      for (let line of lines) {
+        addLine(line);
+      }
     }
 
     console.log(`✅ PDF 共 ${pageCount} 页`);
@@ -1545,10 +1515,6 @@ async function genPDF(text, name) {
     return { blob, filename: `${name}.pdf` };
 
   } catch (err) {
-    // 出错时也要清理
-    if (tempDiv && tempDiv.parentNode) {
-      try { tempDiv.parentNode.removeChild(tempDiv); } catch(e) {}
-    }
     console.error('genPDF 出错:', err);
     // 返回错误 PDF
     try {
