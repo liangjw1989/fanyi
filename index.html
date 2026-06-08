@@ -1450,15 +1450,14 @@ console.log('🌍 翻译结果总长度:', translated.length);
   }
 
   // ==================== genPDF ====================
-  // ==================== 终极稳定版 genPDF（永不空白） ====================
+  // ==================== 最终极稳定版 genPDF（无遮罩，绝对可见） ====================
 async function genPDF(text, name) {
   let tempDiv = null;
-  let overlay = null; // 遮罩层，防止用户看到临时元素
   try {
     const { jsPDF } = window.jspdf;
     if (!jsPDF || typeof html2canvas !== 'function') throw new Error('依赖库未加载');
 
-    // 文本智能分段
+    // 智能段落处理
     let processedText = text || '暂无内容';
     if (!processedText.includes('\n')) {
       processedText = processedText.replace(/([。！？；])(?=[^\n])/g, '$1\n');
@@ -1469,12 +1468,7 @@ async function genPDF(text, name) {
     const mmToPx = 3.779528;
     const containerWidthPx = Math.floor(190 * mmToPx); // 约 718px
 
-    // 创建全屏遮罩（避免用户看到临时元素）
-    overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#fff;z-index:99998;';
-    document.body.appendChild(overlay);
-
-    // 创建临时元素，直接放在屏幕左上角（完全可见）
+    // 创建一个完全可见的临时元素（放在屏幕左上角，白色背景覆盖）
     tempDiv = document.createElement('div');
     tempDiv.style.cssText = `
       position: fixed; top: 0; left: 0; z-index: 99999;
@@ -1496,26 +1490,21 @@ async function genPDF(text, name) {
     await new Promise(r => requestAnimationFrame(r));
     await new Promise(r => requestAnimationFrame(r));
 
-    const contentHeightPx = tempDiv.scrollHeight;
-    console.log('📏 内容高度:', contentHeightPx, 'px');
+    console.log('📏 内容高度:', tempDiv.scrollHeight, 'px');
 
-    // 截图（现在元素真实可见，一定能成功）
+    // 直接用 html2canvas 渲染（不传 width/height/windowWidth/Height，用元素自身尺寸）
     const canvas = await html2canvas(tempDiv, {
       scale: 2,
       useCORS: true,
       allowTaint: true,
       logging: false,
-      width: containerWidthPx,
-      height: contentHeightPx,
-      windowWidth: containerWidthPx,
-      windowHeight: contentHeightPx,
     });
 
-    // 立即清理临时元素和遮罩
-    if (tempDiv && tempDiv.parentNode) tempDiv.parentNode.removeChild(tempDiv);
-    if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
-    tempDiv = null;
-    overlay = null;
+    // 立即移除临时元素
+    if (tempDiv && tempDiv.parentNode) {
+      tempDiv.parentNode.removeChild(tempDiv);
+      tempDiv = null;
+    }
 
     console.log('📐 canvas 尺寸:', canvas.width, 'x', canvas.height);
 
@@ -1556,12 +1545,9 @@ async function genPDF(text, name) {
     return { blob, filename: `${name}.pdf` };
 
   } catch (err) {
-    // 异常时也要清理
+    // 出错时也要清理
     if (tempDiv && tempDiv.parentNode) {
       try { tempDiv.parentNode.removeChild(tempDiv); } catch(e) {}
-    }
-    if (overlay && overlay.parentNode) {
-      try { overlay.parentNode.removeChild(overlay); } catch(e) {}
     }
     console.error('genPDF 出错:', err);
     // 返回错误 PDF
