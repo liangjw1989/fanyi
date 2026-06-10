@@ -1258,55 +1258,44 @@ function escapeHtml(str) {
   }
 
   // ==================== 终极清洗版 callProxy（零残留） ====================
+const deepClean = (str) => {
+  if (!str) return '';
+  const start = str.search(/[\u4e00-\u9fa5a-zA-Z0-9]/);
+  const matches = [...str.matchAll(/[\u4e00-\u9fa5a-zA-Z0-9]/g)];
+  if (matches.length === 0) return str;
+  const end = matches[matches.length - 1].index;
+  return str.substring(start, end + 1).trim();
+};
+
+async function callProxySingle(chunk, target) {
+  const res = await fetch(API_PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: chunk, target })
+  });
+  let raw = await res.text();
+  raw = raw.replace(/^\uFEFF/, '').trim();
+  const cleaned = deepClean(raw);
+  console.log("单次清洗后长度:", cleaned.length);
+  return cleaned;
+}
+
 async function callProxy(text, target) {
-  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
   const MAX_CHARS = 3000;
-
-  // 深度清洗：暴力提取第一个汉字/字母到最后一个汉字/字母
-  const deepClean = (str) => {
-    if (!str) return '';
-    // 匹配第一个非纯 ASCII 符号的中文/英文/数字
-    const start = str.search(/[\u4e00-\u9fa5a-zA-Z0-9]/);
-    // 匹配最后一个
-    const matches = [...str.matchAll(/[\u4e00-\u9fa5a-zA-Z0-9]/g)];
-    if (matches.length === 0) return str;
-    const end = matches[matches.length - 1].index;
-    return str.substring(start, end + 1).trim();
-  };
-
-  const callSingle = async (chunk) => {
-    const res = await fetch(backendUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: chunk, target })
-    });
-    let raw = await res.text();
-    raw = raw.replace(/^\uFEFF/, '').trim();
-
-    // 直接对整个返回字符串做 deepClean，不再依赖 JSON 解析
-    const cleaned = deepClean(raw);
-    console.log("单次清洗后长度:", cleaned.length);
-    return cleaned;
-  };
-
-  // 超长文本按句号拆分
   if (text.length > MAX_CHARS) {
     const sentences = text.match(/[^。！？\.!\?\n]+[。！？\.!\?\n]+|[^。！？\.!\?\n]+$/g) || [text];
     let batches = [], cur = '';
     for (const s of sentences) {
-      if ((cur + s).length > MAX_CHARS && cur) {
-        batches.push(cur.trim());
-        cur = s;
-      } else cur += s;
+      if ((cur + s).length > MAX_CHARS && cur) { batches.push(cur.trim()); cur = s; }
+      else cur += s;
     }
     if (cur.trim()) batches.push(cur.trim());
     console.log(`📦 分为 ${batches.length} 段翻译`);
     const results = [];
-    for (const b of batches) results.push(await callSingle(b));
+    for (const b of batches) results.push(await callProxySingle(b, target));
     return results.join('');
   }
-
-  return await callSingle(text);
+  return await callProxySingle(text, target);
 } 
 
  // ==================== updateFileProgress ====================
@@ -1323,70 +1312,39 @@ function updateFileProgress(fileObj) {
 }
 
   // ==================== translateFile ====================
-  // ==================== 按原文段落翻译 + 长段落分句 + 进度平滑 ====================
-async function translateFile(f) {
-  f.status = 'extracting'; f.progress = 0;
-  updateFileProgress(f);
-
+  async function translateFile(f) {
+  f.status='extracting'; f.progress=0; updateFileProgress(f);
   try {
     const text = await extractText(f.file, f.ext);
     if (!text.trim()) throw new Error('文件中没有可提取的文字');
     f.extractedText = text;
-    console.log('📖 原文长度:', text.length);
+    f.status='translating'; f.progress=30; updateFileProgress(f);
 
-    f.status = 'translating'; f.progress = 30;
-    updateFileProgress(f);
-
-    // 1. 按空行拆分成段落
+    // 按段落翻译
     let paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
-    // 2. 如果段落数太少（比如全文只有一个大段落），再尝试按两个换行拆分
-    if (paragraphs.length <= 2 && text.includes('\n')) {
-      paragraphs = text.split(/\n\n/).filter(p => p.trim().length > 0);
-    }
-    // 3. 如果还是没有合适的段落，按每 2000 字符强制分段（保留句号边界）
-    if (paragraphs.length === 0) {
-      paragraphs = [text];
-    }
+    if (paragraphs.length <= 2 && text.includes('\n')) paragraphs = text.split(/\n\n/).filter(p => p.trim().length > 0);
+    if (paragraphs.length === 0) paragraphs = [text];
 
     const translatedParagraphs = [];
-    const total = paragraphs.length;
-
-    for (let i = 0; i < total; i++) {
+    for (let i = 0; i < paragraphs.length; i++) {
       const para = paragraphs[i];
-      // 翻译单个段落（callProxy 内部会自动处理超长段落）
       const translatedPara = await callProxy(para, f.targetLang);
       translatedParagraphs.push(translatedPara);
-
-      // 更新进度
-      f.progress = Math.floor(30 + (i / total) * 40);
+      f.progress = Math.floor(30 + (i/paragraphs.length)*40);
       updateFileProgress(f);
     }
 
-    // 使用两个换行符连接，保持段落间距
     let translated = translatedParagraphs.join('\n\n');
     f.translatedText = translated;
-    f.progress = 60;
-    updateFileProgress(f);
-    console.log('🌍 翻译结果总长度:', translated.length);
+    f.progress = 60; updateFileProgress(f);
 
-    // 生成最终文件
     const { blob, filename } = await generateOutput(translated, text, f.fmt, f.name, false);
-    f.blobUrl = URL.createObjectURL(blob);
-    f.filename = filename;
-    f.status = 'done';
-    f.progress = 100;
-
+    f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done';
     state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
-    state.completed.push(f);
-    addRecord(f);
+    state.completed.push(f); addRecord(f);
     showToast('翻译完成');
-
-  } catch(e) {
-    f.status = 'error';
-    showToast(`翻译失败: ${e.message}`, true);
-  }
-
-  renderAll(); // 最终刷新界面
+  } catch(e) { f.status='error'; showToast(`翻译失败: ${e.message}`, true); }
+  renderAll();
 }
 
   // ==================== convertFile ====================
@@ -1446,175 +1404,89 @@ async function genPDF(text, name) {
     const { jsPDF } = window.jspdf;
     if (!jsPDF || typeof html2canvas !== 'function') throw new Error('依赖库未加载');
 
-    // -------- 1. 按段落分割文本 --------
     const rawParagraphs = (text || '暂无内容').split(/\n\s*\n/);
-    let htmlContent = '';
+    let html = '';
 
-    // 辅助判断：是否为表格行（包含至少2个制表符或管道符）
-    function isTableRow(str) {
-      return (str.match(/\t/g) || []).length >= 1 || (str.match(/\|/g) || []).length >= 2;
-    }
-
-    // 辅助判断：是否为分隔线（全行由 - — = _ 等符号组成，长度大于5）
-    function isSeparator(str) {
-      return /^[\-—=_]{5,}$/.test(str.trim());
-    }
+    const isTableRow = (s) => (s.match(/\t/g) || []).length >= 1 || (s.match(/\|/g) || []).length >= 2;
+    const isSeparator = (s) => /^[\-—=_]{5,}$/.test(s.trim());
 
     let i = 0;
     while (i < rawParagraphs.length) {
-      const para = rawParagraphs[i].trim();
-      if (para === '') { i++; continue; }
+      const p = rawParagraphs[i].trim();
+      if (p === '') { i++; continue; }
 
-      // 1) 分隔线检测
-      if (isSeparator(para)) {
-        htmlContent += '<hr style="border: none; border-top: 1px solid #000; margin: 0.8em 0;">';
-        i++;
-        continue;
+      if (isSeparator(p)) {
+        html += '<hr style="border:none;border-top:1px solid #000;margin:0.8em 0;">';
+        i++; continue;
       }
 
-      // 2) 表格检测：如果当前段落包含多行且每行都是表格行，则整体渲染为表格
-      //    收集连续表格行
       const tableLines = [];
-      while (i < rawParagraphs.length) {
-        const line = rawParagraphs[i].trim();
-        if (isTableRow(line)) {
-          // 按制表符或管道符拆分单元格
-          let cells;
-          if (line.includes('\t')) {
-            cells = line.split('\t');
-          } else {
-            cells = line.split('|').filter(c => c.trim() !== '');
-          }
-          tableLines.push(cells.map(c => c.trim()));
-          i++;
-        } else {
-          break;
-        }
+      while (i < rawParagraphs.length && isTableRow(rawParagraphs[i].trim())) {
+        let line = rawParagraphs[i].trim();
+        let cells = line.includes('\t') ? line.split('\t') : line.split('|').filter(c => c.trim());
+        tableLines.push(cells.map(c => c.trim()));
+        i++;
       }
-
-      if (tableLines.length > 0) {
-        // 确保每行列数一致（补空）
-        const maxCols = Math.max(...tableLines.map(row => row.length));
-        let tableHtml = '<table style="border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 15px;">';
+      if (tableLines.length) {
+        const maxCols = Math.max(...tableLines.map(r => r.length));
+        html += '<table style="border-collapse:collapse;width:100%;margin:0.8em 0;font-size:15px;">';
         for (const row of tableLines) {
-          tableHtml += '<tr>';
-          for (let c = 0; c < maxCols; c++) {
-            const cell = c < row.length ? escapeHtml(row[c]) : '';
-            tableHtml += `<td style="border: 1px solid #000; padding: 4px 8px;">${cell}</td>`;
-          }
-          tableHtml += '</tr>';
+          html += '<tr>';
+          for (let c=0; c<maxCols; c++) html += `<td style="border:1px solid #000;padding:4px 8px;">${escapeHtml(row[c]||'')}</td>`;
+          html += '</tr>';
         }
-        tableHtml += '</table>';
-        htmlContent += tableHtml;
+        html += '</table>';
         continue;
       }
 
-      // 3) 普通段落处理
-      // 判断是否为标题（沿用之前的逻辑）
-      const trimmed = para;
-      const isTitle = trimmed.length < 80 &&
-        !/[。！？\.!\?]$/.test(trimmed) &&
-        /^[\d一二三四五六七八九十]+[\.\、\s]|^第[一二三四五六七八九十百千]+[章节]|^(Abstract|Introduction|References|摘要|引言|参考文献)/i.test(trimmed);
-
+      const isTitle = p.length < 80 && !/[。！？\.!\?]$/.test(p) && /^[\d一二三四五六七八九十]+[\.\、\s]|^第[一二三四五六七八九十百千]+[章节]|^(Abstract|Introduction|References|摘要|引言|参考文献)/i.test(p);
       if (isTitle) {
-        htmlContent += `<div style="font-size: 18px; font-weight: bold; margin: 1.2em 0 0.3em; text-align: left;">${escapeHtml(trimmed)}</div>`;
+        html += `<div style="font-size:18px;font-weight:bold;margin:1.2em 0 0.3em;">${escapeHtml(p)}</div>`;
       } else {
-        htmlContent += `<p style="font-size: 16px; text-indent: 2em; margin: 0.5em 0; line-height: 1.9;">${escapeHtml(trimmed)}</p>`;
+        html += `<p style="font-size:16px;text-indent:2em;margin:0.5em 0;line-height:1.9;">${escapeHtml(p)}</p>`;
       }
       i++;
     }
 
-    // -------- 2. 创建分页截图容器 --------
     const mmToPx = 3.779528;
     const marginMm = 12;
-    const usableWidthMm = 210 - marginMm * 2;
-    const usableHeightMm = 297 - marginMm * 2;
-    const cssWidth = Math.floor(usableWidthMm * mmToPx);
-    const cssPageHeight = Math.floor(usableHeightMm * mmToPx);
-    const scale = 2;
+    const usableW = 210 - marginMm*2, usableH = 297 - marginMm*2;
+    const cssW = Math.floor(usableW*mmToPx), cssPageH = Math.floor(usableH*mmToPx);
 
     container = document.createElement('div');
-    container.style.cssText = `
-      position: absolute; left: -9999px; top: 0;
-      width: ${cssWidth}px;
-      height: ${cssPageHeight}px;
-      overflow: hidden;
-      background: #fff;
-      padding: 0; margin: 0;
-    `;
-
+    container.style.cssText = `position:absolute;left:-9999px;top:0;width:${cssW}px;height:${cssPageH}px;overflow:hidden;background:#fff;`;
     const inner = document.createElement('div');
-    inner.style.cssText = `
-      width: 100%;
-      padding: 18px;
-      box-sizing: border-box;
-      font-family: "SimSun", "宋体", "Noto Serif CJK SC", serif;
-      color: #000;
-      background: #fff;
-      line-height: 1.9;
-    `;
-    inner.innerHTML = htmlContent;
+    inner.style.cssText = `width:100%;padding:18px;box-sizing:border-box;font-family:"SimSun","宋体",serif;color:#000;background:#fff;line-height:1.9;`;
+    inner.innerHTML = html;
     container.appendChild(inner);
     document.body.appendChild(container);
 
     await new Promise(r => requestAnimationFrame(r));
     await new Promise(r => requestAnimationFrame(r));
+    const totalH = container.scrollHeight;
 
-    const totalHeight = container.scrollHeight;
-    console.log('📏 总内容高度:', totalHeight, 'px');
-
-    // -------- 3. 分页截图 --------
     const doc = new jsPDF('p', 'mm', 'a4');
-    let pageCount = 0;
-    let currentScroll = 0;
-
-    while (currentScroll < totalHeight) {
-      container.scrollTop = currentScroll;
+    let pageCount = 0, scroll = 0;
+    while (scroll < totalH) {
+      container.scrollTop = scroll;
       await new Promise(r => requestAnimationFrame(r));
-
-      const canvas = await html2canvas(container, {
-        scale: scale,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-      });
-
-      console.log(`📐 第 ${pageCount + 1} 页 canvas: ${canvas.width} x ${canvas.height}`);
-
+      const canvas = await html2canvas(container, { scale:2, useCORS:true, allowTaint:true, logging:false });
       const imgData = canvas.toDataURL('image/jpeg', 0.92);
       if (pageCount > 0) doc.addPage();
-
-      const imgWidthMm = usableWidthMm;
-      const imgHeightMm = (canvas.height / (cssWidth * scale)) * imgWidthMm;
-      doc.addImage(imgData, 'JPEG', marginMm, marginMm, imgWidthMm, imgHeightMm);
-
-      currentScroll += cssPageHeight;
+      const imgH = (canvas.height / (cssW*2)) * usableW;
+      doc.addImage(imgData, 'JPEG', marginMm, marginMm, usableW, imgH);
+      scroll += cssPageH;
       pageCount++;
     }
-
-    if (container && container.parentNode) {
-      container.parentNode.removeChild(container);
-      container = null;
-    }
-
+    if (container.parentNode) container.parentNode.removeChild(container);
     console.log(`✅ PDF 共 ${pageCount} 页`);
-    const blob = doc.output('blob');
-    return { blob, filename: `${name}.pdf` };
-
+    return { blob: doc.output('blob'), filename: `${name}.pdf` };
   } catch (err) {
-    if (container && container.parentNode) {
-      try { container.parentNode.removeChild(container); } catch(e) {}
-    }
-    console.error('genPDF 出错:', err);
-    try {
-      const { jsPDF } = window.jspdf;
-      if (jsPDF) {
-        const errorDoc = new jsPDF();
-        errorDoc.text('PDF 生成失败: ' + err.message, 10, 15);
-        return { blob: errorDoc.output('blob'), filename: `${name}_error.pdf` };
-      }
-    } catch(e) {}
-    throw err;
+    if (container && container.parentNode) container.parentNode.removeChild(container);
+    console.error(err);
+    const { jsPDF } = window.jspdf;
+    const eDoc = new jsPDF(); eDoc.text('PDF 生成失败: ' + err.message, 10, 15);
+    return { blob: eDoc.output('blob'), filename: `${name}_error.pdf` };
   }
 }
 
