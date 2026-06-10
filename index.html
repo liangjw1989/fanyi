@@ -1257,129 +1257,56 @@ function escapeHtml(str) {
     return text.trim();
   }
 
-  // ==================== 翻译核心 callProxy（长文本自动拆句、零 JSON 残留） ====================
+  // ==================== 终极清洗版 callProxy（零残留） ====================
 async function callProxy(text, target) {
   const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
-  const MAX_CHARS_PER_REQUEST = 3000;   // 单次请求最大字符数
+  const MAX_CHARS = 3000;
 
-  // 内部清洗：从第一个汉字/字母/数字开始，到最后一个结束，去掉 JSON 外壳
+  // 深度清洗：暴力提取第一个汉字/字母到最后一个汉字/字母
   const deepClean = (str) => {
     if (!str) return '';
-    // 找到第一个汉字/英文字母/数字的位置
+    // 匹配第一个非纯 ASCII 符号的中文/英文/数字
     const start = str.search(/[\u4e00-\u9fa5a-zA-Z0-9]/);
-    // 找到最后一个汉字/英文字母/数字的位置
-    const end = str.search(/[\u4e00-\u9fa5a-zA-Z0-9](?!.*[\u4e00-\u9fa5a-zA-Z0-9])/);
-    if (start !== -1 && end !== -1 && end >= start) {
-      return str.substring(start, end + 1).trim();
-    }
-    return str.trim();
+    // 匹配最后一个
+    const matches = [...str.matchAll(/[\u4e00-\u9fa5a-zA-Z0-9]/g)];
+    if (matches.length === 0) return str;
+    const end = matches[matches.length - 1].index;
+    return str.substring(start, end + 1).trim();
   };
 
-  // 如果文本太长，按句号/换行切分成句子数组，递归翻译
-  if (text.length > MAX_CHARS_PER_REQUEST) {
-    const sentences = text.match(/[^。！？\.!\?\n]+[。！？\.!\?\n]+|[^。！？\.!\?\n]+$/g) || [text];
-    const batches = [];
-    let currentBatch = '';
-    for (const sentence of sentences) {
-      if ((currentBatch + sentence).length > MAX_CHARS_PER_REQUEST && currentBatch) {
-        batches.push(currentBatch.trim());
-        currentBatch = sentence;
-      } else {
-        currentBatch += sentence;
-      }
-    }
-    if (currentBatch.trim()) batches.push(currentBatch.trim());
-
-    console.log(`📦 文本过长，分为 ${batches.length} 段请求翻译`);
-    const results = [];
-    for (const batch of batches) {
-      const result = await callProxySingle(batch, target);
-      results.push(result);
-    }
-    return results.join('');  // 合并返回
-  }
-
-  // 短文本直接请求
-  return await callProxySingle(text, target);
-}
-
-// 单次请求的核心逻辑
-async function callProxySingle(text, target) {
-  const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
-  try {
+  const callSingle = async (chunk) => {
     const res = await fetch(backendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, target })
+      body: JSON.stringify({ text: chunk, target })
     });
+    let raw = await res.text();
+    raw = raw.replace(/^\uFEFF/, '').trim();
 
-    let rawText = await res.text();
-    rawText = rawText.replace(/^\uFEFF/, '').trim();
-    console.log("🔥 原始返回前 500 字:", rawText.substring(0, 500));
+    // 直接对整个返回字符串做 deepClean，不再依赖 JSON 解析
+    const cleaned = deepClean(raw);
+    console.log("单次清洗后长度:", cleaned.length);
+    return cleaned;
+  };
 
-    // 1. 尝试 JSON 解析
-    try {
-      const outer = JSON.parse(rawText);
-      if (outer && outer.result) {
-        if (typeof outer.result === 'string') {
-          const cleaned = deepClean(outer.result);
-          console.log("✅ JSON 解析成功，清洗后长度:", cleaned.length);
-          return cleaned;
-        }
-        if (typeof outer.result === 'object') {
-          let longest = '';
-          const findChinese = (obj) => {
-            if (typeof obj === 'string' && obj.length > longest.length && /[\u4e00-\u9fa5]/.test(obj)) {
-              longest = obj;
-            } else if (Array.isArray(obj)) {
-              obj.forEach(findChinese);
-            } else if (obj && typeof obj === 'object') {
-              Object.values(obj).forEach(findChinese);
-            }
-          };
-          findChinese(outer.result);
-          if (longest) {
-            const cleaned = deepClean(longest);
-            console.log("✅ 从 result 对象提取，清洗后长度:", cleaned.length);
-            return cleaned;
-          }
-        }
-      }
-    } catch (e) {}
-
-    // 2. 中文引号修复再解析
-    try {
-      const fixed = rawText.replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'");
-      const outer = JSON.parse(fixed);
-      if (outer && outer.result && typeof outer.result === 'string') {
-        const cleaned = deepClean(outer.result);
-        console.log("✅ 中文引号修复后提取，清洗后长度:", cleaned.length);
-        return cleaned;
-      }
-    } catch (e) {}
-
-    // 3. 直接对原始字符串进行深度清洗
-    const fallback = deepClean(rawText);
-    console.log("⚠️ 兜底提取，长度:", fallback.length);
-    return fallback;
-
-  } catch (err) {
-    console.error("callProxy 网络错误:", err);
-    return "【网络请求错误】";
+  // 超长文本按句号拆分
+  if (text.length > MAX_CHARS) {
+    const sentences = text.match(/[^。！？\.!\?\n]+[。！？\.!\?\n]+|[^。！？\.!\?\n]+$/g) || [text];
+    let batches = [], cur = '';
+    for (const s of sentences) {
+      if ((cur + s).length > MAX_CHARS && cur) {
+        batches.push(cur.trim());
+        cur = s;
+      } else cur += s;
+    }
+    if (cur.trim()) batches.push(cur.trim());
+    console.log(`📦 分为 ${batches.length} 段翻译`);
+    const results = [];
+    for (const b of batches) results.push(await callSingle(b));
+    return results.join('');
   }
-}
 
-// 独立的深度清洗函数
-function deepClean(str) {
-  if (!str) return '';
-  const start = str.search(/[\u4e00-\u9fa5a-zA-Z0-9]/);
-  const matches = [...str.matchAll(/[\u4e00-\u9fa5a-zA-Z0-9]/g)];
-  if (matches.length === 0) return str;
-  const end = matches[matches.length - 1].index;
-  if (start !== -1 && end >= start) {
-    return str.substring(start, end + 1).trim();
-  }
-  return str.trim();
+  return await callSingle(text);
 } 
 
  // ==================== updateFileProgress ====================
