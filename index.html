@@ -749,6 +749,13 @@
     nextId: 1,
   };
 
+  // ==================== escapeHtml ====================
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
   // ==================== DOM 元素 ====================
   const $ = (id) => document.getElementById(id);
   const translateUpload = $('translateUpload');
@@ -1373,9 +1380,9 @@ function deepClean(str) {
     return str.substring(start, end + 1).trim();
   }
   return str.trim();
-}
+} 
 
- // 精准更新单个文件的进度条和状态，不触发全列表刷新
+ // ==================== updateFileProgress ====================
 function updateFileProgress(fileObj) {
   const fileItem = document.querySelector(`.file-item[data-file-id="${fileObj.id}"]`);
   if (!fileItem) return;
@@ -1386,7 +1393,7 @@ function updateFileProgress(fileObj) {
     statusText.textContent = fileObj.status === 'translating' ? '翻译中...' :
                              fileObj.status === 'extracting' ? '提取文字...' : '';
   }
-} 
+}
 
   // ==================== translateFile ====================
   // ==================== 按原文段落翻译 + 长段落分句 + 进度平滑 ====================
@@ -1498,41 +1505,96 @@ async function translateFile(f) {
     }
   }
 
-  // ==================== genPDF ====================
   // HTML 转义工具
 function escapeHtml(str) {
   const div = document.createElement('div');
-  div.textContent = str;
+  div.textContent = str || '';
   return div.innerHTML;
 }
 
-// ==================== 段落对应、标题识别、缩进版 genPDF ====================
+// ==================== 排版增强版 genPDF ====================
 async function genPDF(text, name) {
   let container = null;
   try {
     const { jsPDF } = window.jspdf;
     if (!jsPDF || typeof html2canvas !== 'function') throw new Error('依赖库未加载');
 
-    // -------- 1. 按段落处理文本 --------
-    const paragraphs = (text || '暂无内容').split(/\n\s*\n/);
+    // -------- 1. 按段落分割文本 --------
+    const rawParagraphs = (text || '暂无内容').split(/\n\s*\n/);
     let htmlContent = '';
 
-    for (let para of paragraphs) {
-      const trimmed = para.trim();
-      if (trimmed === '') continue;
+    // 辅助判断：是否为表格行（包含至少2个制表符或管道符）
+    function isTableRow(str) {
+      return (str.match(/\t/g) || []).length >= 1 || (str.match(/\|/g) || []).length >= 2;
+    }
 
-      // 判断是否为标题：段落长度小于60字且不包含句末标点（。！？.!?）或包含典型序号
-      const isTitle = trimmed.length < 60 &&
+    // 辅助判断：是否为分隔线（全行由 - — = _ 等符号组成，长度大于5）
+    function isSeparator(str) {
+      return /^[\-—=_]{5,}$/.test(str.trim());
+    }
+
+    let i = 0;
+    while (i < rawParagraphs.length) {
+      const para = rawParagraphs[i].trim();
+      if (para === '') { i++; continue; }
+
+      // 1) 分隔线检测
+      if (isSeparator(para)) {
+        htmlContent += '<hr style="border: none; border-top: 1px solid #000; margin: 0.8em 0;">';
+        i++;
+        continue;
+      }
+
+      // 2) 表格检测：如果当前段落包含多行且每行都是表格行，则整体渲染为表格
+      //    收集连续表格行
+      const tableLines = [];
+      while (i < rawParagraphs.length) {
+        const line = rawParagraphs[i].trim();
+        if (isTableRow(line)) {
+          // 按制表符或管道符拆分单元格
+          let cells;
+          if (line.includes('\t')) {
+            cells = line.split('\t');
+          } else {
+            cells = line.split('|').filter(c => c.trim() !== '');
+          }
+          tableLines.push(cells.map(c => c.trim()));
+          i++;
+        } else {
+          break;
+        }
+      }
+
+      if (tableLines.length > 0) {
+        // 确保每行列数一致（补空）
+        const maxCols = Math.max(...tableLines.map(row => row.length));
+        let tableHtml = '<table style="border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 15px;">';
+        for (const row of tableLines) {
+          tableHtml += '<tr>';
+          for (let c = 0; c < maxCols; c++) {
+            const cell = c < row.length ? escapeHtml(row[c]) : '';
+            tableHtml += `<td style="border: 1px solid #000; padding: 4px 8px;">${cell}</td>`;
+          }
+          tableHtml += '</tr>';
+        }
+        tableHtml += '</table>';
+        htmlContent += tableHtml;
+        continue;
+      }
+
+      // 3) 普通段落处理
+      // 判断是否为标题（沿用之前的逻辑）
+      const trimmed = para;
+      const isTitle = trimmed.length < 80 &&
         !/[。！？\.!\?]$/.test(trimmed) &&
         /^[\d一二三四五六七八九十]+[\.\、\s]|^第[一二三四五六七八九十百千]+[章节]|^(Abstract|Introduction|References|摘要|引言|参考文献)/i.test(trimmed);
 
       if (isTitle) {
-        // 标题：加粗、稍大字号、居中或左对齐，不加缩进
-        htmlContent += `<div style="font-size: 18px; font-weight: bold; margin: 1em 0 0.3em; text-align: left;">${escapeHtml(trimmed)}</div>`;
+        htmlContent += `<div style="font-size: 18px; font-weight: bold; margin: 1.2em 0 0.3em; text-align: left;">${escapeHtml(trimmed)}</div>`;
       } else {
-        // 普通段落：首行缩进 2em，字体 16px，上下稍留间距
         htmlContent += `<p style="font-size: 16px; text-indent: 2em; margin: 0.5em 0; line-height: 1.9;">${escapeHtml(trimmed)}</p>`;
       }
+      i++;
     }
 
     // -------- 2. 创建分页截图容器 --------
@@ -1540,8 +1602,8 @@ async function genPDF(text, name) {
     const marginMm = 12;
     const usableWidthMm = 210 - marginMm * 2;
     const usableHeightMm = 297 - marginMm * 2;
-    const cssWidth = Math.floor(usableWidthMm * mmToPx);       // ≈703px
-    const cssPageHeight = Math.floor(usableHeightMm * mmToPx); // ≈1032px
+    const cssWidth = Math.floor(usableWidthMm * mmToPx);
+    const cssPageHeight = Math.floor(usableHeightMm * mmToPx);
     const scale = 2;
 
     container = document.createElement('div');
@@ -1551,6 +1613,7 @@ async function genPDF(text, name) {
       height: ${cssPageHeight}px;
       overflow: hidden;
       background: #fff;
+      padding: 0; margin: 0;
     `;
 
     const inner = document.createElement('div');
@@ -1561,12 +1624,12 @@ async function genPDF(text, name) {
       font-family: "SimSun", "宋体", "Noto Serif CJK SC", serif;
       color: #000;
       background: #fff;
+      line-height: 1.9;
     `;
     inner.innerHTML = htmlContent;
     container.appendChild(inner);
     document.body.appendChild(container);
 
-    // 等待渲染
     await new Promise(r => requestAnimationFrame(r));
     await new Promise(r => requestAnimationFrame(r));
 
@@ -1602,7 +1665,6 @@ async function genPDF(text, name) {
       pageCount++;
     }
 
-    // 清理
     if (container && container.parentNode) {
       container.parentNode.removeChild(container);
       container = null;
