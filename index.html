@@ -1256,6 +1256,46 @@ function escapeHtml(str) {
     await worker.terminate();
     return text.trim();
   }
+// ==================== Google 免费翻译（直接调用） ====================
+async function callGoogleTranslateDirect(text, target) {
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${target}&dt=t&q=${encodeURIComponent(text)}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  let translated = '';
+  if (data && data[0]) {
+    for (const segment of data[0]) {
+      if (segment[0]) translated += segment[0];
+    }
+  }
+  return translated;
+}
+
+async function callGoogleTranslate(text, target) {
+  const MAX_CHARS = 4000;
+  const langMap = {
+    'zh-CN': 'zh-CN', 'zh': 'zh-CN', 'en': 'en', 'ja': 'ja',
+    'ko': 'ko', 'fr': 'fr', 'de': 'de', 'es': 'es', 'ru': 'ru',
+    'pt': 'pt', 'it': 'it', 'ar': 'ar', 'th': 'th', 'vi': 'vi'
+  };
+  const targetLang = langMap[target] || target;
+
+  if (text.length > MAX_CHARS) {
+    const sentences = text.match(/[^。！？\.!\?\n]+[。！？\.!\?\n]+|[^。！？\.!\?\n]+$/g) || [text];
+    let batches = [], cur = '';
+    for (const s of sentences) {
+      if ((cur + s).length > MAX_CHARS && cur) { batches.push(cur.trim()); cur = s; }
+      else cur += s;
+    }
+    if (cur.trim()) batches.push(cur.trim());
+    console.log(`📦 Google 翻译分为 ${batches.length} 段`);
+    const results = [];
+    for (const batch of batches) {
+      results.push(await callGoogleTranslateDirect(batch, targetLang));
+    }
+    return results.join('');
+  }
+  return await callGoogleTranslateDirect(text, targetLang);
+}
 
   // ==================== 终极清洗版 callProxy（零残留） ====================
 const deepClean = (str) => {
@@ -1281,6 +1321,12 @@ async function callProxySingle(chunk, target) {
 }
 
 async function callProxy(text, target) {
+  async function callProxy(text, target) {
+  // ========== 免费翻译切换 ==========
+  const USE_GOOGLE_FREE = true;  // true=免费谷歌，false=腾讯云
+  if (USE_GOOGLE_FREE) {
+    return await callGoogleTranslate(text, target);
+  }
   const MAX_CHARS = 3000;
   if (text.length > MAX_CHARS) {
     const sentences = text.match(/[^。！？\.!\?\n]+[。！？\.!\?\n]+|[^。！？\.!\?\n]+$/g) || [text];
