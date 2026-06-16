@@ -694,28 +694,42 @@
   }
 
   async function callGoogleTranslate(text, target) {
-    const MAX_CHARS = 4000;
-    const langMap = {
-      'zh-CN': 'zh-CN', 'zh': 'zh-CN', 'en': 'en', 'ja': 'ja',
-      'ko': 'ko', 'fr': 'fr', 'de': 'de', 'es': 'es', 'ru': 'ru',
-      'pt': 'pt', 'it': 'it', 'ar': 'ar', 'th': 'th', 'vi': 'vi'
-    };
-    const targetLang = langMap[target] || target;
-    if (text.length > MAX_CHARS) {
-      const sentences = text.match(/[^。！？\.!\?\n]+[。！？\.!\?\n]+|[^。！？\.!\?\n]+$/g) || [text];
-      let batches = [], cur = '';
-      for (const s of sentences) {
-        if ((cur + s).length > MAX_CHARS && cur) { batches.push(cur.trim()); cur = s; }
-        else cur += s;
+  const MAX_CHARS = 1500;  // 降低单次请求长度，避免 URL 过长
+  const langMap = {
+    'zh-CN': 'zh-CN', 'zh': 'zh-CN', 'en': 'en', 'ja': 'ja',
+    'ko': 'ko', 'fr': 'fr', 'de': 'de', 'es': 'es', 'ru': 'ru',
+    'pt': 'pt', 'it': 'it', 'ar': 'ar', 'th': 'th', 'vi': 'vi'
+  };
+  const targetLang = langMap[target] || target;
+
+  if (text.length > MAX_CHARS) {
+    // 将文本按句子或换行切分，然后逐批合并至不超过 MAX_CHARS
+    const sentences = text.match(/[^。！？\.!\?\n]+[。！？\.!\?\n]+|[^。！？\.!\?\n]+$/g) || [text];
+    let batches = [], cur = '';
+    for (const s of sentences) {
+      if ((cur + s).length > MAX_CHARS && cur) {
+        batches.push(cur.trim());
+        cur = s;
+      } else {
+        cur += s;
       }
-      if (cur.trim()) batches.push(cur.trim());
-      console.log(`📦 Google 翻译分为 ${batches.length} 段`);
-      const results = [];
-      for (const batch of batches) results.push(await callGoogleTranslateDirect(batch, targetLang));
-      return results.join('');
     }
-    return await callGoogleTranslateDirect(text, targetLang);
+    if (cur.trim()) batches.push(cur.trim());
+    console.log(`📦 Google 翻译分为 ${batches.length} 段`);
+    const results = [];
+    for (const batch of batches) {
+      try {
+        results.push(await callGoogleTranslateDirect(batch, targetLang));
+      } catch (err) {
+        console.error('分段翻译失败:', err);
+        // 如果某段失败，返回占位符避免整个流程中断
+        results.push('【翻译失败】');
+      }
+    }
+    return results.join('');
   }
+  return await callGoogleTranslateDirect(text, targetLang);
+}
 
   // ==================== 翻译核心 ====================
   async function callProxy(text, target) {
