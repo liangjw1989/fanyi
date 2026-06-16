@@ -1256,6 +1256,8 @@ function escapeHtml(str) {
     await worker.terminate();
     return text.trim();
   }
+
+  // ==================== 终极清洗版 callProxy（零残留） ====================
 // ==================== Google 免费翻译（直接调用） ====================
 async function callGoogleTranslateDirect(text, target) {
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${target}&dt=t&q=${encodeURIComponent(text)}`;
@@ -1297,37 +1299,37 @@ async function callGoogleTranslate(text, target) {
   return await callGoogleTranslateDirect(text, targetLang);
 }
 
-  // ==================== 终极清洗版 callProxy（零残留） ====================
-const deepClean = (str) => {
-  if (!str) return '';
-  const start = str.search(/[\u4e00-\u9fa5a-zA-Z0-9]/);
-  const matches = [...str.matchAll(/[\u4e00-\u9fa5a-zA-Z0-9]/g)];
-  if (matches.length === 0) return str;
-  const end = matches[matches.length - 1].index;
-  return str.substring(start, end + 1).trim();
-};
-
-async function callProxySingle(chunk, target) {
-  const res = await fetch(API_PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: chunk, target })
-  });
-  let raw = await res.text();
-  raw = raw.replace(/^\uFEFF/, '').trim();
-  const cleaned = deepClean(raw);
-  console.log("单次清洗后长度:", cleaned.length);
-  return cleaned;
-}
-
+// ==================== 翻译核心（带免费切换） ====================
 async function callProxy(text, target) {
-  async function callProxy(text, target) {
   // ========== 免费翻译切换 ==========
-  const USE_GOOGLE_FREE = true;  // true=免费谷歌，false=腾讯云
+  const USE_GOOGLE_FREE = true;   // true=免费谷歌，false=腾讯云
   if (USE_GOOGLE_FREE) {
     return await callGoogleTranslate(text, target);
   }
+
+  // ========== 以下是原有腾讯云翻译代码（完整保留） ==========
   const MAX_CHARS = 3000;
+  const deepClean = (str) => {
+    if (!str) return '';
+    const start = str.search(/[\u4e00-\u9fa5a-zA-Z0-9]/);
+    const matches = [...str.matchAll(/[\u4e00-\u9fa5a-zA-Z0-9]/g)];
+    if (matches.length === 0) return str;
+    const end = matches[matches.length - 1].index;
+    return str.substring(start, end + 1).trim();
+  };
+
+  const callSingle = async (chunk) => {
+    const backendUrl = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
+    const res = await fetch(backendUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: chunk, target })
+    });
+    let raw = await res.text();
+    raw = raw.replace(/^\uFEFF/, '').trim();
+    return deepClean(raw);
+  };
+
   if (text.length > MAX_CHARS) {
     const sentences = text.match(/[^。！？\.!\?\n]+[。！？\.!\?\n]+|[^。！？\.!\?\n]+$/g) || [text];
     let batches = [], cur = '';
@@ -1336,25 +1338,11 @@ async function callProxy(text, target) {
       else cur += s;
     }
     if (cur.trim()) batches.push(cur.trim());
-    console.log(`📦 分为 ${batches.length} 段翻译`);
     const results = [];
-    for (const b of batches) results.push(await callProxySingle(b, target));
+    for (const batch of batches) results.push(await callSingle(batch));
     return results.join('');
   }
-  return await callProxySingle(text, target);
-} 
-
- // ==================== updateFileProgress ====================
-function updateFileProgress(fileObj) {
-  const fileItem = document.querySelector(`.file-item[data-file-id="${fileObj.id}"]`);
-  if (!fileItem) return;
-  const progressFill = fileItem.querySelector('.progress-fill');
-  const statusText = fileItem.querySelector('small');
-  if (progressFill) progressFill.style.width = fileObj.progress + '%';
-  if (statusText) {
-    statusText.textContent = fileObj.status === 'translating' ? '翻译中...' :
-                             fileObj.status === 'extracting' ? '提取文字...' : '';
-  }
+  return await callSingle(text);
 }
 
   // ==================== translateFile ====================
