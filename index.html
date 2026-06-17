@@ -667,6 +667,7 @@
       const content = await page.getTextContent();
       text += content.items.map(item => item.str).join(' ') + '\n';
     }
+    text = text.replace(/https?:\/\/\S+/g, '');
     return text.replace(/\s{2,}/g, ' ').trim();
   }
   async function extractDocx(file) {
@@ -746,33 +747,28 @@ text = text.replace(/https?:\/\/\S+/g, '');  // 移除网址
   if (!str) return '';
   let s = str;
 
-  // 1. 去除最外层 JSON 包装 (如 {"code":0,"result":"..."})
-  s = s.replace(/^\s*\{\s*"code"\s*:\s*0\s*,\s*"result"\s*:\s*"/, '');
-  s = s.replace(/"\s*\}\s*$/, '');
-
-  // 2. 处理转义引号 \" 和中文引号 “ ”
-  s = s.replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
-  s = s.replace(/\u201c/g, '"').replace(/\u201d/g, '"');
-
-  // 3. 如果此时仍包含 JSON 外壳（多重编码），再次剥离
-  //    检测到以 { 开头且包含 "text" 等键，尝试提取最长中文
+  // 1. 去除开头的 {"code":0,"result":" 或类似结构
+  s = s.replace(/^\s*\{?\s*"code"\s*:\s*0\s*,\s*"result"\s*:\s*"?\s*/i, '');
+  // 2. 去除结尾的 "} 或 "}
+  s = s.replace(/"\s*\}?\s*$/i, '');
+  // 3. 处理转义：\" → " , \n → 换行 , \t → 制表符 , \\ → \
+  s = s.replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\\\/g, '\\');
+  // 4. 去除残留的 JSON 控制字符（花括号、多余引号）
+  s = s.replace(/[{}]/g, '');
+  // 5. 如果此时还包含 "text":" 之类的模式，提取最长中文片段
   if (s.includes('"text"') || s.includes('"target"') || s.includes('"code"')) {
-    // 尝试寻找类似 "text":"..." 的内容
-    const textMatch = s.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    const textMatch = s.match(/"text"\s*:\s*"([^"]*)"/);
     if (textMatch) s = textMatch[1];
   }
-
-  // 4. 最后一道防线：删除所有残留的 JSON 控制字符
-  //    但保留换行、常用标点、字母数字和中文
-  s = s.replace(/[{}"']/g, '');                    // 移除花括号和引号（正文中引号也可能被删，但影响不大）
-  s = s.replace(/\\/g, '');                       // 移除反斜杠
-  s = s.replace(/code\s*:\s*0\s*,?\s*/gi, '');    // 移除 code:0
-  s = s.replace(/result\s*:\s*/gi, '');           // 移除 result:
-  s = s.replace(/target\s*:\s*"[^"]*"/gi, '');    // 移除 target:"..."
-
-  // 5. 压缩多余空白
+  // 6. 去除开头的 "result":" 等残留
+  s = s.replace(/^"?\s*(result|code|target)\s*:\s*"?\s*/gi, '');
+  // 7. 压缩多余空行
   s = s.replace(/\n{3,}/g, '\n\n').trim();
 
+  // 最后保险：如果第一个字符不是汉字/字母/数字，则截掉前缀
+  const start = s.search(/[\u4e00-\u9fa5a-zA-Z0-9]/);
+  if (start > 0) s = s.substring(start);
+  
   return s;
 };
     const callSingle = async (chunk) => {
@@ -908,12 +904,25 @@ text = text.replace(/https?:\/\/\S+/g, '');  // 移除网址
           continue;
         }
 
-        const isTitle = p.length < 80 && !/[。！？\.!\?]$/.test(p) && /^[\d一二三四五六七八九十]+[\.\、\s]|^第[一二三四五六七八九十百千]+[章节]|^(Abstract|Introduction|References|摘要|引言|参考文献)/i.test(p);
+        // 标题识别：长度<100字符，不以句末标点结束，且满足以下任一：
+// - 以数字+点/顿号开头 (如 "1." "2、")
+// - 以中文数字+点/顿号开头 (如 "一、" "二.")
+// - 以"第X章"开头
+// - 全部大写英文单词开头 (如 "ABSTRACT", "INTRODUCTION")
+// - 单独成行的短英文单词（如 "Abstract", "Introduction"）
+const isTitle = 
+  (p.length < 100 && !/[。！？\.!\?]$/.test(p)) &&
+  (
+    /^[\d]+[\.\、\s]/.test(p) ||
+    /^[一二三四五六七八九十]+[\.\、\s]/.test(p) ||
+    /^第[一二三四五六七八九十百千]+[章节]/.test(p) ||
+    /^[A-Z\s]{2,}$/.test(p.trim()) && p.trim().length > 3 && p.trim().length < 60 ||
+    /^(Abstract|Introduction|Methods|Results|Discussion|Conclusion|References|摘要|引言|方法|结果|讨论|结论|参考文献)\s*$/i.test(p.trim())
+  );
         if (isTitle) {
           html += `<div style="font-size:18px;font-weight:bold;margin:1.2em 0 0.3em;">${escapeHtml(p)}</div>`;
         } else {
-          html += `<p style="font-size:16px;text-indent:2em;margin:0.5em 0;line-height:1.9;">${escapeHtml(p)}</p>`;
-        }
+          html += `<p style="font-size:16px;text-indent:2em;margin:1em 0;line-height:1.9;">${escapeHtml(p)}</p>`;
         i++;
       }
 
