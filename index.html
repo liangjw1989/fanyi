@@ -678,6 +678,8 @@
     const worker = await Tesseract.createWorker('chi_sim+eng', 1);
     const { data: { text } } = await worker.recognize(file);
     await worker.terminate();
+    // 在 extractPDF 函数中，最终 return 前增加：
+text = text.replace(/https?:\/\/\S+/g, '');  // 移除网址
     return text.trim();
   }
 
@@ -741,13 +743,38 @@
     // 腾讯云代码（保留备用）
     const MAX_CHARS = 3000;
     const deepClean = (str) => {
-      if (!str) return '';
-      const start = str.search(/[\u4e00-\u9fa5a-zA-Z0-9]/);
-      const matches = [...str.matchAll(/[\u4e00-\u9fa5a-zA-Z0-9]/g)];
-      if (matches.length === 0) return str;
-      const end = matches[matches.length - 1].index;
-      return str.substring(start, end + 1).trim();
-    };
+  if (!str) return '';
+  let s = str;
+
+  // 1. 去除最外层 JSON 包装 (如 {"code":0,"result":"..."})
+  s = s.replace(/^\s*\{\s*"code"\s*:\s*0\s*,\s*"result"\s*:\s*"/, '');
+  s = s.replace(/"\s*\}\s*$/, '');
+
+  // 2. 处理转义引号 \" 和中文引号 “ ”
+  s = s.replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+  s = s.replace(/\u201c/g, '"').replace(/\u201d/g, '"');
+
+  // 3. 如果此时仍包含 JSON 外壳（多重编码），再次剥离
+  //    检测到以 { 开头且包含 "text" 等键，尝试提取最长中文
+  if (s.includes('"text"') || s.includes('"target"') || s.includes('"code"')) {
+    // 尝试寻找类似 "text":"..." 的内容
+    const textMatch = s.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (textMatch) s = textMatch[1];
+  }
+
+  // 4. 最后一道防线：删除所有残留的 JSON 控制字符
+  //    但保留换行、常用标点、字母数字和中文
+  s = s.replace(/[{}"']/g, '');                    // 移除花括号和引号（正文中引号也可能被删，但影响不大）
+  s = s.replace(/\\/g, '');                       // 移除反斜杠
+  s = s.replace(/code\s*:\s*0\s*,?\s*/gi, '');    // 移除 code:0
+  s = s.replace(/result\s*:\s*/gi, '');           // 移除 result:
+  s = s.replace(/target\s*:\s*"[^"]*"/gi, '');    // 移除 target:"..."
+
+  // 5. 压缩多余空白
+  s = s.replace(/\n{3,}/g, '\n\n').trim();
+
+  return s;
+};
     const callSingle = async (chunk) => {
       const res = await fetch(API_PROXY_URL, {
         method: 'POST',
@@ -850,7 +877,7 @@
       const rawParagraphs = (text || '暂无内容').split(/\n\s*\n/);
       let html = '';
       const isTableRow = (s) => (s.match(/\t/g) || []).length >= 1 || (s.match(/\|/g) || []).length >= 2;
-      const isSeparator = (s) => /^[\-—=_]{5,}$/.test(s.trim());
+      const isSeparator = (s) => /^[\-—=_*#]{3,}$/.test(s.trim());
 
       let i = 0;
       while (i < rawParagraphs.length) {
