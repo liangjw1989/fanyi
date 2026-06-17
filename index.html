@@ -862,110 +862,108 @@ async function callProxy(text, target) {
     }
   }
 
-  // ==================== genPDF ====================
-  async function genPDF(text, name) {
-    let container = null;
-    try {
-      const { jsPDF } = window.jspdf;
-      if (!jsPDF || typeof html2canvas !== 'function') throw new Error('依赖库未加载');
+  // ==================== 排版增强版 genPDF ====================
+async function genPDF(text, name) {
+  let container = null;
+  try {
+    const { jsPDF } = window.jspdf;
+    if (!jsPDF || typeof html2canvas !== 'function') throw new Error('依赖库未加载');
 
-      const rawParagraphs = (text || '暂无内容').split(/\n\s*\n/);
-      let html = '';
-      const isTableRow = (s) => (s.match(/\t/g) || []).length >= 1 || (s.match(/\|/g) || []).length >= 2;
-      const isSeparator = (s) => /^[\-—=_*#]{3,}$/.test(s.trim());
+    const rawParagraphs = (text || '暂无内容').split(/\n\s*\n/);
+    let html = '';
+    const isTableRow = (s) => (s.match(/\t/g) || []).length >= 1 || (s.match(/\|/g) || []).length >= 2;
+    const isSeparator = (s) => /^[\-—=_*#]{3,}$/.test(s.trim());
 
-      let i = 0;
-      while (i < rawParagraphs.length) {
-        const p = rawParagraphs[i].trim();
-        if (p === '') { i++; continue; }
+    let i = 0;
+    while (i < rawParagraphs.length) {
+      const p = rawParagraphs[i].trim();
+      if (p === '') { i++; continue; }
 
-        if (isSeparator(p)) {
-          html += '<hr style="border:none;border-top:1px solid #000;margin:0.8em 0;">';
-          i++; continue;
-        }
+      if (isSeparator(p)) {
+        html += '<hr style="border:none;border-top:1px solid #000;margin:0.8em 0;">';
+        i++; continue;
+      }
 
-        const tableLines = [];
-        while (i < rawParagraphs.length && isTableRow(rawParagraphs[i].trim())) {
-          let line = rawParagraphs[i].trim();
-          let cells = line.includes('\t') ? line.split('\t') : line.split('|').filter(c => c.trim());
-          tableLines.push(cells.map(c => c.trim()));
-          i++;
-        }
-        if (tableLines.length) {
-          const maxCols = Math.max(...tableLines.map(r => r.length));
-          html += '<table style="border-collapse:collapse;width:100%;margin:0.8em 0;font-size:15px;">';
-          for (const row of tableLines) {
-            html += '<tr>';
-            for (let c=0; c<maxCols; c++) html += `<td style="border:1px solid #000;padding:4px 8px;">${escapeHtml(row[c]||'')}</td>`;
-            html += '</tr>';
-          }
-          html += '</table>';
-          continue;
-        }
-
-        // 标题识别：长度<100字符，不以句末标点结束，且满足以下任一：
-// - 以数字+点/顿号开头 (如 "1." "2、")
-// - 以中文数字+点/顿号开头 (如 "一、" "二.")
-// - 以"第X章"开头
-// - 全部大写英文单词开头 (如 "ABSTRACT", "INTRODUCTION")
-// - 单独成行的短英文单词（如 "Abstract", "Introduction"）
-const isTitle = 
-  (p.length < 100 && !/[。！？\.!\?]$/.test(p)) &&
-  (
-    /^[\d]+[\.\、\s]/.test(p) ||
-    /^[一二三四五六七八九十]+[\.\、\s]/.test(p) ||
-    /^第[一二三四五六七八九十百千]+[章节]/.test(p) ||
-    /^[A-Z\s]{2,}$/.test(p.trim()) && p.trim().length > 3 && p.trim().length < 60 ||
-    /^(Abstract|Introduction|Methods|Results|Discussion|Conclusion|References|摘要|引言|方法|结果|讨论|结论|参考文献)\s*$/i.test(p.trim())
-  );
-        if (isTitle) {
-          html += `<div style="font-size:18px;font-weight:bold;margin:1.2em 0 0.3em;">${escapeHtml(p)}</div>`;
-        } else {
-          html += `<p style="font-size:16px;text-indent:2em;margin:1em 0;line-height:1.9;">${escapeHtml(p)}</p>`;
+      // 表格识别
+      const tableLines = [];
+      while (i < rawParagraphs.length && isTableRow(rawParagraphs[i].trim())) {
+        let line = rawParagraphs[i].trim();
+        let cells = line.includes('\t') ? line.split('\t') : line.split('|').filter(c => c.trim());
+        tableLines.push(cells.map(c => c.trim()));
         i++;
       }
-
-      const mmToPx = 3.779528;
-      const marginMm = 12;
-      const usableW = 210 - marginMm*2, usableH = 297 - marginMm*2;
-      const cssW = Math.floor(usableW*mmToPx), cssPageH = Math.floor(usableH*mmToPx);
-
-      container = document.createElement('div');
-      container.style.cssText = `position:absolute;left:-9999px;top:0;width:${cssW}px;height:${cssPageH}px;overflow:hidden;background:#fff;`;
-      const inner = document.createElement('div');
-      inner.style.cssText = `width:100%;padding:18px;box-sizing:border-box;font-family:"SimSun","宋体",serif;color:#000;background:#fff;line-height:1.9;`;
-      inner.innerHTML = html;
-      container.appendChild(inner);
-      document.body.appendChild(container);
-
-      await new Promise(r => requestAnimationFrame(r));
-      await new Promise(r => requestAnimationFrame(r));
-      const totalH = container.scrollHeight;
-
-      const doc = new jsPDF('p', 'mm', 'a4');
-      let pageCount = 0, scroll = 0;
-      while (scroll < totalH) {
-        container.scrollTop = scroll;
-        await new Promise(r => requestAnimationFrame(r));
-        const canvas = await html2canvas(container, { scale:2, useCORS:true, allowTaint:true, logging:false });
-        const imgData = canvas.toDataURL('image/jpeg', 0.92);
-        if (pageCount > 0) doc.addPage();
-        const imgH = (canvas.height / (cssW*2)) * usableW;
-        doc.addImage(imgData, 'JPEG', marginMm, marginMm, usableW, imgH);
-        scroll += cssPageH;
-        pageCount++;
+      if (tableLines.length) {
+        const maxCols = Math.max(...tableLines.map(r => r.length));
+        html += '<table style="border-collapse:collapse;width:100%;margin:0.8em 0;font-size:15px;">';
+        for (const row of tableLines) {
+          html += '<tr>';
+          for (let c=0; c<maxCols; c++) html += `<td style="border:1px solid #000;padding:4px 8px;">${escapeHtml(row[c]||'')}</td>`;
+          html += '</tr>';
+        }
+        html += '</table>';
+        continue;
       }
-      if (container.parentNode) container.parentNode.removeChild(container);
-      console.log(`✅ PDF 共 ${pageCount} 页`);
-      return { blob: doc.output('blob'), filename: `${name}.pdf` };
-      catch (err) {
-      if (container && container.parentNode) container.parentNode.removeChild(container);
-      console.error(err);
-      const { jsPDF } = window.jspdf;
-      const eDoc = new jsPDF(); eDoc.text('PDF 生成失败: ' + err.message, 10, 15);
-      return { blob: eDoc.output('blob'), filename: `${name}_error.pdf` };
+
+      // 标题识别
+      const isTitle = 
+        (p.length < 100 && !/[。！？\.!\?]$/.test(p)) &&
+        (
+          /^[\d]+[\.\、\s]/.test(p) ||
+          /^[一二三四五六七八九十]+[\.\、\s]/.test(p) ||
+          /^第[一二三四五六七八九十百千]+[章节]/.test(p) ||
+          /^[A-Z\s]{2,}$/.test(p.trim()) && p.trim().length > 3 && p.trim().length < 60 ||
+          /^(Abstract|Introduction|Methods|Results|Discussion|Conclusion|References|摘要|引言|方法|结果|讨论|结论|参考文献)\s*$/i.test(p.trim())
+        );
+
+      if (isTitle) {
+        html += `<div style="font-size:18px;font-weight:bold;margin:1.2em 0 0.3em;">${escapeHtml(p)}</div>`;
+      } else {
+        html += `<p style="font-size:16px;text-indent:2em;margin:1em 0;line-height:1.9;">${escapeHtml(p)}</p>`;
+      }
+      i++; // 统一递增，避免死循环
     }
+
+    const mmToPx = 3.779528;
+    const marginMm = 12;
+    const usableW = 210 - marginMm*2, usableH = 297 - marginMm*2;
+    const cssW = Math.floor(usableW*mmToPx), cssPageH = Math.floor(usableH*mmToPx);
+
+    container = document.createElement('div');
+    container.style.cssText = `position:absolute;left:-9999px;top:0;width:${cssW}px;height:${cssPageH}px;overflow:hidden;background:#fff;`;
+    const inner = document.createElement('div');
+    inner.style.cssText = `width:100%;padding:18px;box-sizing:border-box;font-family:"SimSun","宋体",serif;color:#000;background:#fff;line-height:1.9;`;
+    inner.innerHTML = html;
+    container.appendChild(inner);
+    document.body.appendChild(container);
+
+    await new Promise(r => requestAnimationFrame(r));
+    await new Promise(r => requestAnimationFrame(r));
+    const totalH = container.scrollHeight;
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    let pageCount = 0, scroll = 0;
+    while (scroll < totalH) {
+      container.scrollTop = scroll;
+      await new Promise(r => requestAnimationFrame(r));
+      const canvas = await html2canvas(container, { scale:2, useCORS:true, allowTaint:true, logging:false });
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      if (pageCount > 0) doc.addPage();
+      const imgH = (canvas.height / (cssW*2)) * usableW;
+      doc.addImage(imgData, 'JPEG', marginMm, marginMm, usableW, imgH);
+      scroll += cssPageH;
+      pageCount++;
+    }
+    if (container.parentNode) container.parentNode.removeChild(container);
+    console.log(`✅ PDF 共 ${pageCount} 页`);
+    return { blob: doc.output('blob'), filename: `${name}.pdf` };
+  } catch (err) {
+    if (container && container.parentNode) container.parentNode.removeChild(container);
+    console.error(err);
+    const { jsPDF } = window.jspdf;
+    const eDoc = new jsPDF(); eDoc.text('PDF 生成失败: ' + err.message, 10, 15);
+    return { blob: eDoc.output('blob'), filename: `${name}_error.pdf` };
   }
+}
 
   // ==================== 其他格式生成 ====================
   async function genDOCX(text, name) {
