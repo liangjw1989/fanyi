@@ -733,7 +733,7 @@
 
   // ==================== 翻译核心 ====================
   async function callProxy(text, target) {
-    const USE_GOOGLE_FREE = true;   // 切换开关
+    const USE_GOOGLE_FREE = false;  // 切换开关
     if (USE_GOOGLE_FREE) {
       return await callGoogleTranslate(text, target);
     }
