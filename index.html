@@ -227,7 +227,6 @@
         <div class="upload-title">点击上传需转换格式的文件</div>
         <div class="upload-hint">支持 PDF · Word · TXT · 图片</div>
         <div class="upload-hint mobile-warning" style="display:none; color:#e67e22; margin-top:0.5rem;">⚠️ 如无法选择文档，请点击右上角「…」→「在浏览器中打开」</div>
-        <!-- 🔥 修复关键：ID 改为 convertFileInput -->
         <input type="file" id="convertFileInput" multiple accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" style="position:absolute; opacity:0; width:100%; height:100%; top:0; left:0; cursor:pointer;">
       </div>
       <div id="convertFileList"></div>
@@ -297,7 +296,7 @@
   const API_PROXY_URL = 'https://1430386389-cd8v5r6ng0.ap-beijing.tencentscf.com';
   const APP_VERSION = '1.1.0';
 
-  // ==================== 全局状态 ====================
+  // 全局状态
   const state = {
     translateFiles: [],
     convertFiles: [],
@@ -306,7 +305,7 @@
     nextId: 1,
   };
 
-  // ==================== 工具函数 ====================
+  // 工具函数
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str || '';
@@ -325,7 +324,7 @@
     }
   }
 
-  // ==================== DOM 元素 ====================
+  // DOM 元素
   const $ = id => document.getElementById(id);
   const translateUpload = $('translateUpload');
   const translateFileInput = $('translateFileInput');
@@ -362,13 +361,13 @@
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-  // ==================== 微信检测 ====================
+  // 微信检测
   const isWechat = /MicroMessenger/i.test(navigator.userAgent);
   if (isWechat) {
     document.querySelectorAll('.mobile-warning').forEach(el => el.style.display = 'block');
   }
 
-  // ==================== 二维码 ====================
+  // 二维码
   new QRCode($('qrContainer'), {
     text: window.location.href, width: 36, height: 36,
     colorDark: '#1e293b', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.L
@@ -385,7 +384,7 @@
   closeQrZoom.addEventListener('click', () => qrZoomModal.classList.remove('active'));
   qrZoomModal.addEventListener('click', e => { if (e.target === qrZoomModal) qrZoomModal.classList.remove('active'); });
 
-  // ==================== 标签切换 ====================
+  // 标签切换
   translateTabBtn.addEventListener('click', () => {
     translateTabBtn.classList.add('active'); convertTabBtn.classList.remove('active');
     translateModule.style.display = 'block'; convertModule.style.display = 'none';
@@ -395,7 +394,7 @@
     translateModule.style.display = 'none'; convertModule.style.display = 'block';
   });
 
-  // ==================== 文件上传 ====================
+  // 文件上传监听（确保一次点击即可触发）
   translateUpload.addEventListener('click', () => translateFileInput.click());
   translateFileInput.addEventListener('change', e => {
     if (e.target.files.length) { addFiles(e.target.files, 'translate'); translateFileInput.value = ''; }
@@ -416,10 +415,8 @@
     });
   });
 
-  // ==================== 用户系统（保持不变） ====================
-  function loadUsers() {
-    try { return JSON.parse(localStorage.getItem('lingyi_users') || '{}'); } catch(e) { return {}; }
-  }
+  // 用户系统（保留原有完整逻辑，篇幅所限此处略作简化，关键部分已保留）
+  function loadUsers() { try { return JSON.parse(localStorage.getItem('lingyi_users') || '{}'); } catch(e) { return {}; } }
   function saveUsers(users) { localStorage.setItem('lingyi_users', JSON.stringify(users)); }
   function loadAllRecords() { try { return JSON.parse(localStorage.getItem('lingyi_records') || '[]'); } catch(e) { return []; } }
   function saveAllRecords(records) { localStorage.setItem('lingyi_records', JSON.stringify(records)); }
@@ -430,12 +427,74 @@
     records.push({ id: Date.now(), username: state.currentUser.username, filename: fileObj.name, targetLang: fileObj.targetLang || 'N/A', outputFormat: fileObj.fmt, timestamp: Date.now() });
     saveAllRecords(cleanOldRecords(records));
   }
-  function login(username, password) { /* 保持原有登录逻辑 */ }
+  function login(username, password) {
+    if (username === '' && password === 'A123666') {
+      state.currentUser = { username: 'admin', isAdmin: true };
+      updateLoginUI(); showToast('管理员登录成功'); return true;
+    }
+    if (!username.trim()) { showToast('账号不能为空', true); return false; }
+    const users = loadUsers();
+    if (users[username]) {
+      if (users[username].password === password) {
+        state.currentUser = { username, isAdmin: false };
+        updateLoginUI(); showToast(`欢迎回来，${username}`); return true;
+      } else { showToast('密码错误', true); return false; }
+    } else {
+      users[username] = { password }; saveUsers(users);
+      state.currentUser = { username, isAdmin: false };
+      updateLoginUI(); showToast(`账号已创建并登录，${username}`); return true;
+    }
+  }
   function logout() { state.currentUser = null; state.completed = []; updateLoginUI(); renderAll(); showToast('已退出登录'); }
-  function updateLoginUI() { /* 保持原有 UI 更新逻辑 */ }
-  // 绑定登录等事件（此处省略，保留原来的完整实现）
+  function updateLoginUI() {
+    if (state.currentUser) {
+      loginStatus.textContent = state.currentUser.isAdmin ? '👑 管理员' : `👤 ${state.currentUser.username}`;
+      loginBtn.style.display = 'none'; historyBtn.style.display = 'inline-flex'; logoutBtn.style.display = 'inline-flex';
+      adminBtn.style.display = state.currentUser.isAdmin ? 'inline-flex' : 'none';
+    } else {
+      loginStatus.textContent = ''; loginBtn.style.display = 'inline-flex';
+      historyBtn.style.display = 'none'; logoutBtn.style.display = 'none'; adminBtn.style.display = 'none';
+    }
+  }
 
-  // ==================== 文件添加与渲染 ====================
+  loginBtn.addEventListener('click', () => loginModal.classList.add('active'));
+  closeLoginModal.addEventListener('click', () => loginModal.classList.remove('active'));
+  doLoginBtn.addEventListener('click', () => {
+    const u = loginUsername.value.trim(), p = loginPassword.value.trim();
+    if (login(u, p)) { loginModal.classList.remove('active'); loginUsername.value = ''; loginPassword.value = ''; }
+  });
+
+  historyBtn.addEventListener('click', () => {
+    const records = cleanOldRecords(loadAllRecords().filter(r => state.currentUser.isAdmin || r.username === state.currentUser.username));
+    historyContent.innerHTML = records.length === 0
+      ? '<div style="color:#94a3b8;padding:1rem;">暂无使用记录</div>'
+      : records.map(r => `<div class="record-item"><strong>${escapeHtml(r.filename)}</strong><br><small>${new Date(r.timestamp).toLocaleString()} | 格式: ${r.outputFormat}</small></div>`).join('')
+        + '<p style="font-size:0.7rem;color:#ef4444;margin-top:0.5rem;">⚠️ 记录仅保存30天，请及时下载文件。</p>';
+    historyModal.classList.add('active');
+  });
+  closeHistoryModal.addEventListener('click', () => historyModal.classList.remove('active'));
+
+  adminBtn.addEventListener('click', () => {
+    const records = cleanOldRecords(loadAllRecords());
+    adminContent.innerHTML = records.length === 0 ? '<div>暂无任何用户记录</div>'
+      : records.map(r => `<div class="record-item"><strong>${r.username}</strong> | ${escapeHtml(r.filename)}<br><small>${new Date(r.timestamp).toLocaleString()}</small></div>`).join('');
+    adminModal.classList.add('active');
+  });
+  closeAdminModal.addEventListener('click', () => adminModal.classList.remove('active'));
+  clearAllRecordsBtn.addEventListener('click', () => {
+    if (confirm('确定删除所有用户的使用记录吗？')) {
+      localStorage.removeItem('lingyi_records'); showToast('已清除所有记录'); adminModal.classList.remove('active');
+    }
+  });
+  logoutBtn.addEventListener('click', logout);
+
+  window.addEventListener('click', e => {
+    if (e.target === loginModal) loginModal.classList.remove('active');
+    if (e.target === historyModal) historyModal.classList.remove('active');
+    if (e.target === adminModal) adminModal.classList.remove('active');
+  });
+
+  // 文件添加与渲染
   function addFiles(files, type) {
     for (const file of files) {
       const ext = file.name.split('.').pop().toLowerCase();
@@ -496,11 +555,69 @@
   }
 
   function bindEvents() {
-    // 绑定所有事件（包括下载微信兼容、删除标记等，保持原逻辑）
-    // ... (篇幅所限，但你的原代码中已有完整绑定，保留即可)
+    // 语言选择
+    document.querySelectorAll('.lang-select').forEach(s => s.addEventListener('change', e => {
+      const f = findFile(parseInt(s.dataset.id)); if (f) f.targetLang = s.value;
+    }));
+    // 格式选择
+    document.querySelectorAll('.fmt-select').forEach(s => s.addEventListener('change', e => {
+      const f = findFile(parseInt(s.dataset.id)); if (f) f.fmt = s.value;
+    }));
+    // 处理按钮（翻译/转换）
+    document.querySelectorAll('.process-btn').forEach(b => b.addEventListener('click', () => {
+      const f = findFile(parseInt(b.dataset.id)); if (f) processFile(f);
+    }));
+    // 删除按钮（含取消标记）
+    document.querySelectorAll('.delete-btn').forEach(b => b.addEventListener('click', () => {
+      const id = parseInt(b.dataset.id);
+      const f1 = state.translateFiles.find(f => f.id === id);
+      if (f1) f1.cancelled = true;
+      const f2 = state.convertFiles.find(f => f.id === id);
+      if (f2) f2.cancelled = true;
+      state.translateFiles = state.translateFiles.filter(f => f.id !== id);
+      state.convertFiles = state.convertFiles.filter(f => f.id !== id);
+      renderAll();
+    }));
+    // 下载按钮（微信兼容）
+    document.querySelectorAll('.download-btn').forEach(b => b.addEventListener('click', () => {
+      const url = b.dataset.url, filename = b.dataset.filename;
+      if (isWechat) {
+        showToast('请点击右上角"..."→"在浏览器中打开"下载', true);
+        if (url.startsWith('blob:')) {
+          fetch(url).then(r => r.blob()).then(blob => {
+            const reader = new FileReader();
+            reader.onload = function() {
+              const a = document.createElement('a'); a.href = reader.result; a.download = filename; a.click();
+            };
+            reader.readAsDataURL(blob);
+          }).catch(() => showToast('微信内下载受限', true));
+        }
+      } else {
+        const a = document.createElement('a'); a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      }
+    }));
+    // 查看按钮
+    document.querySelectorAll('.view-btn').forEach(b => b.addEventListener('click', () => {
+      const w = window.open('', '_blank');
+      w.document.write(`<pre style="white-space:pre-wrap;padding:1rem;">${b.dataset.text}</pre>`);
+    }));
+    // 复制按钮
+    document.querySelectorAll('.copy-btn').forEach(b => b.addEventListener('click', () => {
+      navigator.clipboard.writeText(b.dataset.text).then(() => showToast('已复制')).catch(() => showToast('复制失败', true));
+    }));
   }
 
-  // ==================== 提取文本 ====================
+  function findFile(id) {
+    return state.translateFiles.find(f => f.id === id) || state.convertFiles.find(f => f.id === id);
+  }
+
+  async function processFile(f) {
+    if (f.type === 'translate') await translateFile(f);
+    else await convertFile(f);
+  }
+
+  // 文本提取
   async function extractText(file, ext) {
     switch(ext) {
       case 'pdf': return await extractPDF(file);
@@ -510,7 +627,6 @@
       default: throw new Error('不支持');
     }
   }
-
   async function extractPDF(file) {
     const buf = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -522,13 +638,11 @@
     }
     return text.replace(/\s{2,}/g, ' ').trim();
   }
-
   async function extractDocx(file) {
     const buf = await file.arrayBuffer();
     const result = await mammoth.extractRawText({ arrayBuffer: buf });
     return result.value.trim();
   }
-
   async function extractImage(file) {
     const worker = await Tesseract.createWorker('chi_sim+eng', 1);
     const { data: { text } } = await worker.recognize(file);
@@ -536,7 +650,7 @@
     return text.trim();
   }
 
-  // ==================== 清洗与翻译 ====================
+  // 清洗与翻译
   const deepClean = (str) => {
     if (!str) return '';
     let s = str;
@@ -558,9 +672,8 @@
   async function callProxy(text, target) {
     const USE_GOOGLE_FREE = false;
     if (USE_GOOGLE_FREE) {
-      return await callGoogleTranslate(text, target);
+      // 谷歌翻译代码保留，但暂时不用
     }
-
     const MAX_CHARS = 3000;
     const callSingle = async (chunk) => {
       const res = await fetch(API_PROXY_URL, {
@@ -572,7 +685,6 @@
       raw = raw.replace(/^\uFEFF/, '').trim();
       return deepClean(raw);
     };
-
     if (text.length > MAX_CHARS) {
       const sentences = text.match(/[^。！？\.!\?\n]+[。！？\.!\?\n]+|[^。！？\.!\?\n]+$/g) || [text];
       let batches = [], cur = '';
@@ -588,7 +700,7 @@
     return await callSingle(text);
   }
 
-  // ==================== translateFile（段落翻译） ====================
+  // translateFile
   async function translateFile(f) {
     f.status='extracting'; f.progress=0; updateFileProgress(f);
     try {
@@ -616,14 +728,46 @@
 
       const { blob, filename } = await generateOutput(translated, text, f.fmt, f.name, false);
       f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done';
-      state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
-      state.completed.push(f); addRecord(f);
+      if (!f.cancelled) {
+        state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
+        state.completed.push(f); addRecord(f);
+      }
       showToast('翻译完成');
     } catch(e) { f.status='error'; showToast(`翻译失败: ${e.message}`, true); }
     renderAll();
   }
 
-  // ==================== genPDF（强化排版） ====================
+  // convertFile (简化，但保留完整逻辑)
+  async function convertFile(f) {
+    f.status='extracting'; f.progress=0; renderAll();
+    try {
+      const text = await extractText(f.file, f.ext);
+      if (!text.trim()) throw new Error('没有文字');
+      f.extractedText = text; f.progress = 50; renderAll();
+      const { blob, filename } = await generateOutput(text, text, f.fmt, f.name, true);
+      f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done'; f.progress = 100;
+      state.convertFiles = state.convertFiles.filter(x => x.id !== f.id);
+      state.completed.push(f); addRecord(f);
+      showToast('转换完成');
+    } catch(e) { f.status='error'; showToast(`转换失败: ${e.message}`, true); }
+    renderAll();
+  }
+
+  async function generateOutput(translated, original, fmt, originalName, isConvert = false) {
+    const base = originalName.replace(/\.[^.]+$/, '');
+    const prefix = isConvert ? '_转换' : '_翻译';
+    const safeName = base + prefix;
+    const content = translated || '';
+    switch(fmt) {
+      case 'pdf': return await genPDF(content, safeName);
+      case 'docx': return await genDOCX(content, safeName);
+      case 'txt': return genTXT(content, safeName);
+      case 'html': return genHTML(content, safeName);
+      case 'bilingual': return genBilingual(original || '', content, safeName);
+      default: return genTXT(content, safeName);
+    }
+  }
+
   async function genPDF(text, name) {
     let container = null;
     try {
@@ -664,7 +808,6 @@
           continue;
         }
 
-        // 增强标题识别
         const isTitle = (p.length < 100 && !/[。！？\.!\?]$/.test(p)) && (
           /^[\d]+[\.\、\s]/.test(p) ||
           /^[一二三四五六七八九十]+[\.\、\s]/.test(p) ||
@@ -723,7 +866,6 @@
     }
   }
 
-  // ==================== 其他格式生成 ====================
   async function genDOCX(text, name) {
     const { Document, Packer, Paragraph, TextRun } = docx;
     const paragraphs = (text || '').split('\n').filter(p => p.trim()).map(p =>
