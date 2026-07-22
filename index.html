@@ -608,6 +608,43 @@ async function pdfToImages(file) {
   }
   return images;
 }
+
+// ==================== 文本提取 ====================
+async function extractText(file, ext) {
+  switch (ext) {
+    case 'pdf': return await extractPDF(file);
+    case 'docx': case 'doc': return await extractDocx(file);
+    case 'txt': return await file.text();
+    case 'png': case 'jpg': case 'jpeg': return await extractImage(file);
+    default: throw new Error('不支持的文件格式: ' + ext);
+  }
+}
+
+async function extractPDF(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(item => item.str).join(' ') + '\n';
+  }
+  return text.replace(/\s{2,}/g, ' ').trim();
+}
+
+async function extractDocx(file) {
+  const buf = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer: buf });
+  return result.value.trim();
+}
+
+async function extractImage(file) {
+  const worker = await Tesseract.createWorker('chi_sim+eng', 1);
+  const { data: { text } } = await worker.recognize(file);
+  await worker.terminate();
+  return text.trim();
+}
+
     // ==================== 终极视觉 callProxy（支持仅扫描模式） ====================
 async function callProxy(input, target) {
   // 获取“仅扫描”复选框状态
