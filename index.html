@@ -494,26 +494,88 @@
   }
 
   // 文本提取
-  async function extractText(file, ext) {
-    switch(ext) {
-      case 'pdf': return await extractPDF(file);
-      case 'docx': case 'doc': return await extractDocx(file);
-      case 'txt': return await file.text();
-      case 'png': case 'jpg': case 'jpeg': return await extractImage(file);
-      default: throw new Error('不支持');
-    }
-  }
   async function extractPDF(file) {
-    const buf = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-    let text = '';
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      text += content.items.map(item => item.str).join(' ') + '\n';
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let text = '';
+  
+  // 配置项：当同一行内连续两个文本的 x 间距超过此值时，认为是新的一列（单位：PDF 点）
+  const COLUMN_GAP_THRESHOLD = 15;
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const items = content.items;
+
+    if (items.length === 0) continue;
+
+    // 按 y 坐标排序（从上到下），相同 y 的视为一行
+    const sorted = items.slice().sort((a, b) => {
+      if (Math.abs(a.transform[5] - b.transform[5]) > 5) {
+        return b.transform[5] - a.transform[5]; // y 降序（pdf 坐标系原点在左下）
+      }
+      return a.transform[4] - b.transform[4]; // 同一行按 x 升序
+    });
+
+    let lastY = null;
+    let lineTexts = [];
+
+    const flushLine = () => {
+      if (lineTexts.length === 0) return;
+      // 检查是否可能为表格行：同一行中至少有两个文本项，且 x 间距较大
+      let isTableRow = false;
+      if (lineTexts.length >= 2) {
+        const xPositions = lineTexts.map(item => item.transform[4]);
+        for (let j = 1; j < xPositions.length; j++) {
+          if (xPositions[j] - xPositions[j-1] > COLUMN_GAP_THRESHOLD) {
+            isTableRow = true;
+            break;
+          }
+        }
+      }
+      if (isTableRow) {
+        // 表格行：按 x 排序后，相邻较远的插入制表符
+        lineTexts.sort((a, b) => a.transform[4] - b.transform[4]);
+        let rowStr = '';
+        let prevX = null;
+        for (const item of lineTexts) {
+          if (prevX !== null && item.transform[4] - prevX > COLUMN_GAP_THRESHOLD) {
+            rowStr += '\t';
+          } else if (prevX !== null) {
+            rowStr += ' '; // 同一列内用空格连接
+          }
+          rowStr += item.str;
+          prevX = item.transform[4] + (item.width || 0);
+        }
+        text += rowStr.trim() + '\n';
+      } else {
+        // 普通文本行：空格连接
+        text += lineTexts.map(item => item.str).join(' ') + '\n';
+      }
+      lineTexts = [];
+    };
+
+    for (const item of sorted) {
+      const currentY = item.transform[5];
+      if (lastY === null) {
+        lastY = currentY;
+      } else if (Math.abs(currentY - lastY) > 5) {
+        flushLine();
+        lastY = currentY;
+      }
+      lineTexts.push(item);
     }
-    return text.replace(/\s{2,}/g, ' ').trim();
+    flushLine();
+    
+    // 不同页面之间添加分隔符，帮助 DeepSeek 识别分页
+    text += '\n---\n';
   }
+  
+  // 简单清理多余空格和空行
+  text = text.replace(/\n{3,}/g, '\n\n').trim();
+  return text;
+}
+
   async function extractDocx(file) {
     const buf = await file.arrayBuffer();
     const result = await mammoth.extractRawText({ arrayBuffer: buf });
@@ -526,30 +588,81 @@
     return text.trim();
   }
 
-    // ==================== 安全版 callProxy（无密钥） ====================
+    // ==================== 统一翻译+排版 callProxy（含语言修复） ====================
 async function callProxy(text, target) {
-  const isLongText = text.length > 3000;
+  // 腾讯云只接受简写语言代码，这里做一下转换
+  const langMap = {
+    'zh-CN': 'zh', 'zh': 'zh',
+    'en': 'en', 'ja': 'ja', 'ko': 'ko',
+    'fr': 'fr', 'de': 'de', 'es': 'es', 'ru': 'ru',
+    'pt': 'pt', 'it': 'it', 'ar': 'ar', 'th': 'th', 'vi': 'vi'
+  };
+  const tencentTarget = langMap[target] || target;  // 腾讯云用的语言代码
+  const MAX_CHUNK = 3000;
 
-  // 短文档优先腾讯云，失败自动切 DeepSeek；长文档直接用 DeepSeek
-  const engines = isLongText ? ['deepseek'] : ['tencent', 'deepseek'];
+  // ========== 第一步：腾讯云分段翻译 ==========
+  let translatedText = '';
 
-  for (const engine of engines) {
-    try {
+  if (text.length <= MAX_CHUNK) {
+    const res = await fetch(API_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, target: tencentTarget, engine: 'tencent' })
+    });
+    const data = await res.json();
+    if (data.code !== 0) throw new Error(data.result || '腾讯云翻译失败');
+    translatedText = data.result;
+  } else {
+    const sentences = text.match(/[^。！？\.!\?\n]+[。！？\.!\?\n]+|[^。！？\.!\?\n]+$/g) || [text];
+    let batches = [], cur = '';
+    for (const s of sentences) {
+      if ((cur + s).length > MAX_CHUNK && cur) {
+        batches.push(cur.trim());
+        cur = s;
+      } else {
+        cur += s;
+      }
+    }
+    if (cur.trim()) batches.push(cur.trim());
+    console.log(`📦 腾讯云翻译分为 ${batches.length} 段`);
+
+    const results = [];
+    for (const batch of batches) {
       const res = await fetch(API_PROXY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, target, engine })
+        body: JSON.stringify({ text: batch, target: tencentTarget, engine: 'tencent' })
       });
       const data = await res.json();
-      if (data.code === 0) {
-        console.log(`✅ ${engine} 翻译成功`);
-        return data.result;
-      }
-    } catch (err) {
-      console.warn(`${engine} 失败:`, err.message);
+      if (data.code !== 0) throw new Error(data.result || '腾讯云翻译失败');
+      results.push(data.result);
     }
+    translatedText = results.join('\n\n');
   }
-  throw new Error('所有翻译引擎均失败');
+
+  console.log('✅ 腾讯云翻译完成');
+
+  // ========== 第二步：DeepSeek 排版优化 ==========
+  try {
+    console.log('📝 正在用 DeepSeek 优化排版...');
+    // 排版时仍然使用原始 target（比如 'zh-CN'），云函数内部会再次映射
+    const fmtRes = await fetch(API_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: translatedText, target, engine: 'reformat' })
+    });
+    const fmtData = await fmtRes.json();
+    if (fmtData.code === 0) {
+      console.log('✅ 排版优化完成');
+      return fmtData.result;
+    } else {
+      console.warn('排版优化失败，使用未排版的翻译结果');
+      return translatedText;
+    }
+  } catch (fmtErr) {
+    console.warn('排版优化请求失败，使用未排版的翻译结果:', fmtErr.message);
+    return translatedText;
+  }
 }
 
   // ==================== 翻译文件 ====================
@@ -589,34 +702,42 @@ async function callProxy(text, target) {
     renderAll();
   }
 
-  // ==================== Markdown 渲染版 genPDF ====================
+  // ==================== Markdown 渲染 + 特殊标签样式 genPDF ====================
 async function genPDF(text, name) {
   let container = null;
   try {
     const { jsPDF } = window.jspdf;
     if (!jsPDF || typeof html2canvas !== 'function') throw new Error('依赖库未加载');
 
-    // 1. Markdown 转 HTML（自动识别标题、表格、段落、加粗等）
+    // 1. Markdown 转 HTML
     let htmlContent;
     if (typeof marked !== 'undefined') {
       htmlContent = marked.parse(text || '暂无内容');
     } else {
-      // 降级：纯文本换行处理
       htmlContent = (text || '暂无内容').replace(/\n/g, '<br>');
     }
 
-    // 2. 包裹基础样式，确保中文字体和行距
+    // 2. 将 DeepSeek 生成的特殊标签替换为带样式的 HTML
+    htmlContent = htmlContent
+      .replace(/&lt;header&gt;([\s\S]*?)&lt;\/header&gt;/g,
+        '<div class="page-header" style="font-size:12px; color:#666; border-bottom:1px solid #ccc; margin-bottom:1em; padding-bottom:0.5em;">$1</div>')
+      .replace(/&lt;footer&gt;([\s\S]*?)&lt;\/footer&gt;/g,
+        '<div class="page-footer" style="font-size:12px; color:#666; border-top:1px solid #ccc; margin-top:1em; padding-top:0.5em;">$1</div>')
+      .replace(/&lt;note&gt;([\s\S]*?)&lt;\/note&gt;/g,
+        '<div class="annotation" style="font-size:13px; margin-left:1em; padding:0.5em; border-left:3px solid #aaa; color:#444; background:#f9f9f9;">$1</div>');
+
+    // 3. 包裹基础样式
     htmlContent = `<div style="font-family:'SimSun','宋体',serif; font-size:16px; line-height:1.9; color:#000; padding:18px; box-sizing:border-box;">
       ${htmlContent}
     </div>`;
 
-    // 3. 页面尺寸计算
+    // 4. 页面尺寸计算
     const mmToPx = 3.779528;
     const marginMm = 12;
     const usableW = 210 - marginMm*2, usableH = 297 - marginMm*2;
     const cssW = Math.floor(usableW*mmToPx), cssPageH = Math.floor(usableH*mmToPx);
 
-    // 4. 创建隐藏容器并渲染
+    // 5. 创建隐藏容器并渲染
     container = document.createElement('div');
     container.style.cssText = `position:absolute;left:-9999px;top:0;width:${cssW}px;height:${cssPageH}px;overflow:hidden;background:#fff;`;
     container.innerHTML = htmlContent;
@@ -626,7 +747,7 @@ async function genPDF(text, name) {
     await new Promise(r => requestAnimationFrame(r));
     const totalH = container.scrollHeight;
 
-    // 5. 分页截图生成 PDF
+    // 6. 分页截图生成 PDF
     const doc = new jsPDF('p', 'mm', 'a4');
     let pageCount = 0, scroll = 0;
     while (scroll < totalH) {
