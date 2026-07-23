@@ -650,56 +650,20 @@ async function callProxy(input, target) {
   // 获取“仅扫描”复选框状态
   const scanOnly = document.getElementById('scanOnlyCheck')?.checked || false;
 
-  // ========== 文件输入（PDF/图片）→ 视觉识别流程 ==========
-  if (input instanceof File) {
-    const images = [];
-    const ext = input.name.split('.').pop().toLowerCase();
-
-    if (ext === 'pdf') {
-      images.push(...(await pdfToImages(input)));
-    } else if (['png', 'jpg', 'jpeg'].includes(ext)) {
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(input);
-      });
-      images.push(base64);
-    } else {
-      throw new Error('不支持的文件格式，仅支持 PDF/图片');
-    }
-
-    console.log(`📸 共 ${images.length} 页，开始视觉识别${scanOnly ? '（仅扫描）' : ''}...`);
-    const markdownPages = [];
-    for (let i = 0; i < images.length; i++) {
-      const res = await fetch(API_PROXY_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image: images[i],
-          target: scanOnly ? 'none' : target,
-          engine: 'vision',
-          translate: !scanOnly
-        })
-      });
-      const data = await res.json();
-      if (data.code === 0) {
-        markdownPages.push(data.result);
-        console.log(`✅ 第 ${i + 1}/${images.length} 页完成`);
-      } else {
-        throw new Error(`第 ${i + 1} 页识别失败: ` + data.result);
-      }
-    }
-    return markdownPages.join('\n\n---\n\n');
-  }
-
-  // ========== 纯文本输入（Word/TXT）→ 腾讯云翻译 + DeepSeek 排版 ==========
-  const text = input;
-  const langMap = { 'zh-CN': 'zh', 'zh': 'zh', 'en': 'en', 'ja': 'ja', 'ko': 'ko', 'fr': 'fr', 'de': 'de' };
+  // ==================== 统一翻译+排版 callProxy（文本版） ====================
+async function callProxy(text, target) {
+  // 腾讯云只接受简写语言代码
+  const langMap = {
+    'zh-CN': 'zh', 'zh': 'zh', 'en': 'en', 'ja': 'ja',
+    'ko': 'ko', 'fr': 'fr', 'de': 'de', 'es': 'es', 'ru': 'ru',
+    'pt': 'pt', 'it': 'it', 'ar': 'ar', 'th': 'th', 'vi': 'vi'
+  };
   const tencentTarget = langMap[target] || target;
   const MAX_CHUNK = 3000;
 
+  // ========== 第一步：腾讯云分段翻译 ==========
   let translatedText = '';
+
   if (text.length <= MAX_CHUNK) {
     const res = await fetch(API_PROXY_URL, {
       method: 'POST',
@@ -717,6 +681,7 @@ async function callProxy(input, target) {
       else cur += s;
     }
     if (cur.trim()) batches.push(cur.trim());
+    console.log(`📦 腾讯云翻译分为 ${batches.length} 段`);
     const results = [];
     for (const batch of batches) {
       const res = await fetch(API_PROXY_URL, {
@@ -730,8 +695,10 @@ async function callProxy(input, target) {
     }
     translatedText = results.join('\n\n');
   }
+
   console.log('✅ 腾讯云翻译完成');
 
+  // ========== 第二步：DeepSeek 排版优化 ==========
   try {
     console.log('📝 正在用 DeepSeek 优化排版...');
     const fmtRes = await fetch(API_PROXY_URL, {
@@ -743,49 +710,46 @@ async function callProxy(input, target) {
     if (fmtData.code === 0) {
       console.log('✅ 排版优化完成');
       return fmtData.result;
+    } else {
+      console.warn('排版优化失败，使用未排版的翻译结果');
+      return translatedText;
     }
   } catch (fmtErr) {
-    console.warn('排版优化失败，使用未排版的翻译结果');
+    console.warn('排版优化请求失败，使用未排版的翻译结果:', fmtErr.message);
+    return translatedText;
   }
-  return translatedText;
 }
 
   // ==================== 翻译文件 ====================
   async function translateFile(f) {
-    f.status='extracting'; f.progress=0; updateFileProgress(f);
-    try {
-      const text = await extractText(f.file, f.ext);
-      if (!text.trim()) throw new Error('没有文字');
-      f.extractedText = text;
-      f.status='translating'; f.progress=30; updateFileProgress(f);
+  f.status='extracting'; f.progress=0; updateFileProgress(f);
+  try {
+    const text = await extractText(f.file, f.ext);
+    if (!text.trim()) throw new Error('文件中没有可提取的文字');
+    f.extractedText = text;
+    f.status='translating'; f.progress=30; updateFileProgress(f);
 
-      const translated = await callProxy(f.file, f.targetLang);
-      f.translatedText = translated;
-      f.progress = 80; updateFileProgress(f);
+    // 调用翻译+排版（传入提取的文本，不是文件对象）
+    const translated = await callProxy(text, f.targetLang);
+    f.translatedText = translated;
+    f.progress = 80; updateFileProgress(f);
 
-      const { blob, filename } = await genPDF(translated, f.name);
-      f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done';
-      state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
-      state.completed.push(f); addRecord(f);
-      showToast('翻译完成');
-    } catch(e) { f.status='error'; showToast(`翻译失败: ${e.message}`, true); }
-    renderAll();
+    // 生成 PDF
+    const { blob, filename } = await genPDF(translated, f.name);
+    f.blobUrl = URL.createObjectURL(blob);
+    f.filename = filename;
+    f.status = 'done';
+
+    state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
+    state.completed.push(f);
+    addRecord(f);
+    showToast('翻译完成');
+  } catch(e) {
+    f.status='error';
+    showToast(`翻译失败: ${e.message}`, true);
   }
-
-  async function convertFile(f) {
-    f.status='extracting'; f.progress=0; renderAll();
-    try {
-      const text = await extractText(f.file, f.ext);
-      if (!text.trim()) throw new Error('没有文字');
-      f.extractedText = text; f.progress = 50;
-      const { blob, filename } = await genPDF(text, f.name);
-      f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done';
-      state.convertFiles = state.convertFiles.filter(x => x.id !== f.id);
-      state.completed.push(f); addRecord(f);
-      showToast('转换完成');
-    } catch(e) { f.status='error'; showToast(`转换失败: ${e.message}`, true); }
-    renderAll();
-  }
+  renderAll();
+}
 
   // ==================== Markdown 渲染 + 特殊标签样式 genPDF ====================
 async function genPDF(text, name) {
