@@ -588,6 +588,100 @@
     return text.trim();
   }
 
+// ==================== 文本提取 ====================
+async function extractText(file, ext) {
+  switch (ext) {
+    case 'pdf': return await extractPDF(file);
+    case 'docx': case 'doc': return await extractDocx(file);
+    case 'txt': return await file.text();
+    case 'png': case 'jpg': case 'jpeg': return await extractImage(file);
+    default: throw new Error('不支持的文件格式: ' + ext);
+  }
+}
+
+async function extractPDF(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const items = content.items;
+    if (items.length === 0) continue;
+
+    // 按 y 坐标排序（从上到下），相同 y 的视为一行
+    const sorted = items.slice().sort((a, b) => {
+      if (Math.abs(a.transform[5] - b.transform[5]) > 5) {
+        return b.transform[5] - a.transform[5];
+      }
+      return a.transform[4] - b.transform[4];
+    });
+
+    let lastY = null;
+    let lineTexts = [];
+
+    const flushLine = () => {
+      if (lineTexts.length === 0) return;
+      // 检查是否为表格行：同一行中至少有两个文本项，且 x 间距较大
+      let isTableRow = false;
+      if (lineTexts.length >= 2) {
+        const xPositions = lineTexts.map(item => item.transform[4]);
+        for (let j = 1; j < xPositions.length; j++) {
+          if (xPositions[j] - xPositions[j - 1] > 15) {
+            isTableRow = true;
+            break;
+          }
+        }
+      }
+      if (isTableRow) {
+        lineTexts.sort((a, b) => a.transform[4] - b.transform[4]);
+        let rowStr = '';
+        let prevX = null;
+        for (const item of lineTexts) {
+          if (prevX !== null && item.transform[4] - prevX > 15) {
+            rowStr += '\t';
+          } else if (prevX !== null) {
+            rowStr += ' ';
+          }
+          rowStr += item.str;
+          prevX = item.transform[4] + (item.width || 0);
+        }
+        text += rowStr.trim() + '\n';
+      } else {
+        text += lineTexts.map(item => item.str).join(' ') + '\n';
+      }
+      lineTexts = [];
+    };
+
+    for (const item of sorted) {
+      const currentY = item.transform[5];
+      if (lastY === null) {
+        lastY = currentY;
+      } else if (Math.abs(currentY - lastY) > 5) {
+        flushLine();
+        lastY = currentY;
+      }
+      lineTexts.push(item);
+    }
+    flushLine();
+    text += '\n---\n';
+  }
+  return text.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+async function extractDocx(file) {
+  const buf = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer: buf });
+  return result.value.trim();
+}
+
+async function extractImage(file) {
+  const worker = await Tesseract.createWorker('chi_sim+eng', 1);
+  const { data: { text } } = await worker.recognize(file);
+  await worker.terminate();
+  return text.trim();
+}
+
     // ==================== 统一翻译+排版 callProxy（含语言修复） ====================
 async function callProxy(text, target) {
   // 腾讯云只接受简写语言代码，这里做一下转换
