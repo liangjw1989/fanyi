@@ -822,8 +822,12 @@ async function genPDF(text, name) {
 
     // 4. 包裹基础样式
     htmlContent = `<div style="font-family:'SimSun','宋体',serif; font-size:16px; line-height:1.9; color:#000; padding:18px; box-sizing:border-box;">
-      ${htmlContent}
-    </div>`;
+  <style>
+    p { text-indent: 2em !important; margin-bottom: 0.5em; }
+    h1, h2, h3, h4, h5, h6 { text-indent: 0 !important; }
+  </style>
+  ${htmlContent}
+</div>`;
 
     // 5. 页面尺寸计算
     const mmToPx = 3.779528;
@@ -844,17 +848,18 @@ async function genPDF(text, name) {
     // 7. 分页截图生成 PDF
     const doc = new jsPDF('p', 'mm', 'a4');
     let pageCount = 0, scroll = 0;
-    while (scroll < totalH) {
-      container.scrollTop = scroll;
-      await new Promise(r => requestAnimationFrame(r));
-      const canvas = await html2canvas(container, { scale:2, useCORS:true, allowTaint:true, logging:false });
-      const imgData = canvas.toDataURL('image/jpeg', 0.92);
-      if (pageCount > 0) doc.addPage();
-      const imgH = (canvas.height / (cssW*2)) * usableW;
-      doc.addImage(imgData, 'JPEG', marginMm, marginMm, usableW, imgH);
-      scroll += cssPageH;
-      pageCount++;
-    }
+    const overlap = 5; // 每页重叠 5 像素，避免文字被切断
+while (scroll < totalH) {
+  container.scrollTop = scroll;
+  await new Promise(r => requestAnimationFrame(r));
+  const canvas = await html2canvas(container, { scale:2, useCORS:true, allowTaint:true, logging:false });
+  const imgData = canvas.toDataURL('image/jpeg', 0.92);
+  if (pageCount > 0) doc.addPage();
+  const imgH = (canvas.height / (cssW*2)) * usableW;
+  doc.addImage(imgData, 'JPEG', marginMm, marginMm, usableW, imgH);
+  scroll += (cssPageH - overlap); // 每次滚动略少于一页高度
+  pageCount++;
+}
     if (container.parentNode) container.parentNode.removeChild(container);
     console.log(`✅ PDF 共 ${pageCount} 页`);
     return { blob: doc.output('blob'), filename: `${name}.pdf` };
