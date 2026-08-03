@@ -454,19 +454,50 @@
   }
 
   function renderFileItem(f, type) {
-    const actionBtn = `<button class="btn btn-primary btn-sm process-btn" data-id="${f.id}"><i class="fas fa-play"></i> ${type==='translate'?'翻译':'转换'}</button>`;
+    const langSelect = type === 'translate'
+      ? `<select class="lang-select" data-id="${f.id}">
+           <option value="zh-CN" ${f.targetLang==='zh-CN'?'selected':''}>中文</option>
+           <option value="ja">日本語</option>
+           <option value="ko">한국어</option>
+           <option value="fr">Français</option>
+           <option value="de">Deutsch</option>
+         </select>`
+      : '';
+
+    const targetFormats = type === 'translate'
+      ? ['pdf', 'bilingual-vertical', 'bilingual-horizontal', 'docx', 'txt', 'html']
+      : ['pdf', 'docx', 'txt'];
+
+    const formatSelect = `<select class="fmt-select" data-id="${f.id}">
+      <option value="pdf" ${f.fmt==='pdf'?'selected':''}>PDF (通篇翻译)</option>
+      <option value="bilingual-vertical" ${f.fmt==='bilingual-vertical'?'selected':''}>对照 (上下排列)</option>
+      <option value="bilingual-horizontal" ${f.fmt==='bilingual-horizontal'?'selected':''}>对照 (左右分栏)</option>
+      <option value="docx" ${f.fmt==='docx'?'selected':''}>DOCX</option>
+      <option value="txt" ${f.fmt==='txt'?'selected':''}>TXT</option>
+      <option value="html" ${f.fmt==='html'?'selected':''}>HTML</option>
+    </select>`;
+
+    const actionLabel = type === 'translate' ? '翻译' : '转换';
+    const actionBtn = `<button class="btn btn-primary btn-sm process-btn" data-id="${f.id}"><i class="fas fa-play"></i> ${actionLabel}</button>`;
     const deleteBtn = `<button class="btn btn-danger btn-sm delete-btn" data-id="${f.id}"><i class="fas fa-trash"></i></button>`;
+
+    let statusBadge = '';
+    if (f.status === 'error') statusBadge = '<span class="status-badge error">失败</span>';
+    else if (f.status === 'done') statusBadge = '<span class="status-badge done">完成</span>';
+    else if (f.status === 'translating' || f.status === 'extracting') statusBadge = '<span class="status-badge processing">处理中</span>';
+    else statusBadge = '<span class="status-badge pending">等待</span>';
+
     return `
       <div class="file-item" data-file-id="${f.id}">
         <i class="fas fa-file file-icon"></i>
         <div class="file-info">
           <div class="file-name">${escapeHtml(f.name)}</div>
           <div class="progress-bar"><div class="progress-fill" style="width:${f.progress}%"></div></div>
-          <small>${f.status}</small>
+          <small>${statusBadge}</small>
         </div>
-        <div class="file-actions">${actionBtn}${deleteBtn}</div>
+        <div class="file-actions">${langSelect}${formatSelect}${actionBtn}${deleteBtn}</div>
       </div>`;
-  }
+}
 
   function bindEvents() {
     document.querySelectorAll('.process-btn').forEach(b => b.addEventListener('click', () => {
@@ -589,13 +620,21 @@
   }
 
 // ==================== 文本提取 ====================
-async function extractText(file, ext) {
-  switch (ext) {
-    case 'pdf': return await extractPDF(file);
-    case 'docx': case 'doc': return await extractDocx(file);
-    case 'txt': return await file.text();
-    case 'png': case 'jpg': case 'jpeg': return await extractImage(file);
-    default: throw new Error('不支持的文件格式: ' + ext);
+async function generateOutput(translated, original, fmt, originalName, isConvert = false) {
+  const base = originalName.replace(/\.[^.]+$/, '');
+  const prefix = isConvert ? '_转换' : '_翻译';
+  const safeName = base + prefix;
+  const content = translated || '';
+
+  switch(fmt) {
+    case 'pdf': return await genPDF(content, safeName, 'full');
+    case 'bilingual-vertical': return await genPDF(content, safeName, 'bilingual-vertical');
+    case 'bilingual-horizontal': return await genPDF(content, safeName, 'bilingual-horizontal');
+    case 'docx': return await genDOCX(content, safeName);
+    case 'txt': return genTXT(content, safeName);
+    case 'html': return genHTML(content, safeName);
+    case 'bilingual': return genBilingual(original || '', content, safeName);
+    default: return genTXT(content, safeName);
   }
 }
 
@@ -683,6 +722,18 @@ async function extractImage(file) {
 }
 
     // ==================== 统一排版 callProxy（所有文档腾讯云翻译 + 全文 DeepSeek 排版） ====================
+async function callProxy(text, target, outputFormat = 'pdf') {
+  // 双语对照分支
+  if (outputFormat === 'bilingual-vertical' || outputFormat === 'bilingual-horizontal') {
+    const layout = outputFormat === 'bilingual-horizontal' ? 'horizontal' : 'vertical';
+    const res = await fetch(API_PROXY_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, target, engine: 'bilingual', layout })
+    });
+    const data = await res.json();
+    if (data.code === 0) return data.result;
+    throw new Error(data.result || '双语对照生成失败');
+  }
 async function callProxy(text, target) {
   // 腾讯云语言代码映射
   const langMap = {
@@ -763,7 +814,7 @@ async function callProxy(text, target) {
       f.extractedText = text;
       f.status='translating'; f.progress=30; updateFileProgress(f);
 
-      const translated = await callProxy(text, f.targetLang);
+      const translated = await callProxy(text, f.targetLang, f.fmt);
       f.translatedText = translated;
       f.progress = 80; updateFileProgress(f);
 
@@ -791,8 +842,8 @@ async function callProxy(text, target) {
     renderAll();
   }
 
-  // ==================== Markdown 渲染版 genPDF（表格、标题、分隔线增强） ====================
-async function genPDF(text, name) {
+  // ==================== 增强 genPDF（通篇翻译 + 上下对照 + 左右分栏） ====================
+async function genPDF(text, name, layout = 'full') {
   let container = null;
   try {
     const { jsPDF } = window.jspdf;
@@ -815,27 +866,51 @@ async function genPDF(text, name) {
       .replace(/&lt;note&gt;([\s\S]*?)&lt;\/note&gt;/g,
         '<div class="annotation" style="font-size:13px; margin-left:1em; padding:0.5em; border-left:3px solid #aaa; color:#444; background:#f9f9f9;">$1</div>');
 
-    // 3. 给表格添加边框样式
-    htmlContent = htmlContent.replace(/<table>/g, '<table style="border-collapse:collapse; width:100%; margin:1em 0;">');
-    htmlContent = htmlContent.replace(/<th>/g, '<th style="border:1px solid #000; padding:8px; background:#f0f0f0; font-weight:bold;">');
-    htmlContent = htmlContent.replace(/<td>/g, '<td style="border:1px solid #000; padding:8px;">');
+    // 3. 处理双语对照标记（[ORIG]...[/ORIG] [TRANS]...[/TRANS]）
+    if (layout === 'bilingual-vertical') {
+      // 上下对照：原文块和译文块上下排列
+      htmlContent = htmlContent
+        .replace(/\[ORIG\]/g, '<div class="orig-block" style="margin-bottom:0.5em;">')
+        .replace(/\[\/ORIG\]/g, '</div>')
+        .replace(/\[TRANS\]/g, '<div class="trans-block" style="margin-bottom:1.5em; padding-left:1em; border-left:3px solid #4f6ef7; color:#333;">')
+        .replace(/\[\/TRANS\]/g, '</div>');
+    } else if (layout === 'bilingual-horizontal') {
+      // 左右分栏：原文左栏，译文右栏
+      htmlContent = htmlContent
+        .replace(/\[ORIG\]/g, '<div class="orig-col" style="flex:1; padding-right:0.5em; border-right:1px solid #ccc;">')
+        .replace(/\[\/ORIG\]/g, '</div>')
+        .replace(/\[TRANS\]/g, '<div class="trans-col" style="flex:1; padding-left:0.5em;">')
+        .replace(/\[\/TRANS\]/g, '</div>');
+      // 将相邻的原文和译文包裹在 flex 容器中
+      htmlContent = htmlContent.replace(
+        /<div class="orig-col" style="flex:1; padding-right:0.5em; border-right:1px solid #ccc;">([\s\S]*?)<\/div>\s*<div class="trans-col" style="flex:1; padding-left:0.5em;">([\s\S]*?)<\/div>/g,
+        '<div style="display:flex; gap:1em; margin-bottom:1.5em; page-break-inside:avoid;">$&</div>'
+      );
+    }
 
-    // 4. 包裹基础样式
+    // 4. 给表格添加边框样式
+    htmlContent = htmlContent
+      .replace(/<table>/g, '<table style="border-collapse:collapse; width:100%; margin:1em 0;">')
+      .replace(/<th>/g, '<th style="border:1px solid #000; padding:8px; background:#f0f0f0; font-weight:bold;">')
+      .replace(/<td>/g, '<td style="border:1px solid #000; padding:8px;">');
+
+    // 5. 包裹基础样式
     htmlContent = `<div style="font-family:'SimSun','宋体',serif; font-size:16px; line-height:1.9; color:#000; padding:18px; box-sizing:border-box;">
-  <style>
-    p { text-indent: 2em !important; margin-bottom: 0.5em; }
-    h1, h2, h3, h4, h5, h6 { text-indent: 0 !important; }
-  </style>
-  ${htmlContent}
-</div>`;
+      <style>
+        p { text-indent: 2em !important; margin-bottom: 0.5em; }
+        h1, h2, h3, h4, h5, h6 { text-indent: 0 !important; }
+        hr { border: none; border-top: 1px dashed #ccc; margin: 1.5em 0; }
+      </style>
+      ${htmlContent}
+    </div>`;
 
-    // 5. 页面尺寸计算
+    // 6. 页面尺寸计算
     const mmToPx = 3.779528;
     const marginMm = 12;
     const usableW = 210 - marginMm*2, usableH = 297 - marginMm*2;
     const cssW = Math.floor(usableW*mmToPx), cssPageH = Math.floor(usableH*mmToPx);
 
-    // 6. 创建隐藏容器并渲染
+    // 7. 创建隐藏容器并渲染
     container = document.createElement('div');
     container.style.cssText = `position:absolute;left:-9999px;top:0;width:${cssW}px;height:${cssPageH}px;overflow:hidden;background:#fff;`;
     container.innerHTML = htmlContent;
@@ -845,21 +920,21 @@ async function genPDF(text, name) {
     await new Promise(r => requestAnimationFrame(r));
     const totalH = container.scrollHeight;
 
-    // 7. 分页截图生成 PDF
+    // 8. 分页截图生成 PDF（带重叠避免切断文字）
     const doc = new jsPDF('p', 'mm', 'a4');
     let pageCount = 0, scroll = 0;
-    const overlap = 5; // 每页重叠 5 像素，避免文字被切断
-while (scroll < totalH) {
-  container.scrollTop = scroll;
-  await new Promise(r => requestAnimationFrame(r));
-  const canvas = await html2canvas(container, { scale:2, useCORS:true, allowTaint:true, logging:false });
-  const imgData = canvas.toDataURL('image/jpeg', 0.92);
-  if (pageCount > 0) doc.addPage();
-  const imgH = (canvas.height / (cssW*2)) * usableW;
-  doc.addImage(imgData, 'JPEG', marginMm, marginMm, usableW, imgH);
-  scroll += (cssPageH - overlap); // 每次滚动略少于一页高度
-  pageCount++;
-}
+    const overlap = 5;
+    while (scroll < totalH) {
+      container.scrollTop = scroll;
+      await new Promise(r => requestAnimationFrame(r));
+      const canvas = await html2canvas(container, { scale:2, useCORS:true, allowTaint:true, logging:false });
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      if (pageCount > 0) doc.addPage();
+      const imgH = (canvas.height / (cssW*2)) * usableW;
+      doc.addImage(imgData, 'JPEG', marginMm, marginMm, usableW, imgH);
+      scroll += (cssPageH - overlap);
+      pageCount++;
+    }
     if (container.parentNode) container.parentNode.removeChild(container);
     console.log(`✅ PDF 共 ${pageCount} 页`);
     return { blob: doc.output('blob'), filename: `${name}.pdf` };
