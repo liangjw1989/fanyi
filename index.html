@@ -683,8 +683,24 @@ async function extractImage(file) {
 }
 
     // ==================== 统一排版 callProxy（所有文档腾讯云翻译 + 全文 DeepSeek 排版） ====================
-async function callProxy(text, target) {
-  // 腾讯云语言代码映射
+async function callProxy(text, target, outputFormat = 'pdf') {
+  // 双语对照分支
+if (outputFormat === 'bilingual-vertical' || outputFormat === 'bilingual-horizontal') {
+  const layout = outputFormat === 'bilingual-horizontal' ? 'horizontal' : 'vertical';
+  const res = await fetch(API_PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, target, engine: 'bilingual', layout })
+  });
+  const data = await res.json();
+  if (data.code === 0) {
+    console.log('✅ 双语对照生成完成');
+    return data.result;
+  } else {
+    throw new Error(data.result || '双语对照生成失败');
+  }
+}
+// 腾讯云语言代码映射
   const langMap = {
     'zh-CN': 'zh', 'zh': 'zh', 'en': 'en', 'ja': 'ja',
     'ko': 'ko', 'fr': 'fr', 'de': 'de', 'es': 'es', 'ru': 'ru',
@@ -763,7 +779,7 @@ async function callProxy(text, target) {
       f.extractedText = text;
       f.status='translating'; f.progress=30; updateFileProgress(f);
 
-      const translated = await callProxy(text, f.targetLang);
+      const translated = await callProxy(text, f.targetLang, f.fmt);
       f.translatedText = translated;
       f.progress = 80; updateFileProgress(f);
 
