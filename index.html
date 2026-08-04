@@ -837,14 +837,14 @@ f.status = 'done';
     renderAll();
   }
 
-  // ==================== Markdown 渲染版 genPDF（表格、标题、分隔线增强） ====================
-async function genPDF(text, name) {
+  // ==================== genPDF（通篇翻译 + 双语对照优化） ====================
+async function genPDF(text, name, layout = 'full') {
   let container = null;
   try {
     const { jsPDF } = window.jspdf;
     if (!jsPDF || typeof html2canvas !== 'function') throw new Error('依赖库未加载');
 
-    // 1. Markdown 转 HTML
+    // Markdown 转 HTML
     let htmlContent;
     if (typeof marked !== 'undefined') {
       htmlContent = marked.parse(text || '暂无内容');
@@ -852,7 +852,7 @@ async function genPDF(text, name) {
       htmlContent = (text || '暂无内容').replace(/\n/g, '<br>');
     }
 
-    // 2. 处理页眉/页脚/注解标签
+    // 处理页眉/页脚/注解标签
     htmlContent = htmlContent
       .replace(/&lt;header&gt;([\s\S]*?)&lt;\/header&gt;/g,
         '<div class="page-header" style="font-size:12px; color:#666; border-bottom:1px solid #ccc; margin-bottom:1em; padding-bottom:0.5em;">$1</div>')
@@ -861,27 +861,31 @@ async function genPDF(text, name) {
       .replace(/&lt;note&gt;([\s\S]*?)&lt;\/note&gt;/g,
         '<div class="annotation" style="font-size:13px; margin-left:1em; padding:0.5em; border-left:3px solid #aaa; color:#444; background:#f9f9f9;">$1</div>');
 
-    // 3. 给表格添加边框样式
-    htmlContent = htmlContent.replace(/<table>/g, '<table style="border-collapse:collapse; width:100%; margin:1em 0;">');
-    htmlContent = htmlContent.replace(/<th>/g, '<th style="border:1px solid #000; padding:8px; background:#f0f0f0; font-weight:bold;">');
-    htmlContent = htmlContent.replace(/<td>/g, '<td style="border:1px solid #000; padding:8px;">');
+    // 表格添加边框
+    htmlContent = htmlContent
+      .replace(/<table>/g, '<table style="border-collapse:collapse; width:100%; margin:1em 0;">')
+      .replace(/<th>/g, '<th style="border:1px solid #000; padding:8px; background:#f0f0f0; font-weight:bold;">')
+      .replace(/<td>/g, '<td style="border:1px solid #000; padding:8px;">');
 
-    // 4. 包裹基础样式
+    // 包裹基础样式
     htmlContent = `<div style="font-family:'SimSun','宋体',serif; font-size:16px; line-height:1.9; color:#000; padding:18px; box-sizing:border-box;">
-  <style>
-    p { text-indent: 2em !important; margin-bottom: 0.5em; }
-    h1, h2, h3, h4, h5, h6 { text-indent: 0 !important; }
-  </style>
-  ${htmlContent}
-</div>`;
+      <style>
+        p { text-indent: 2em !important; margin-bottom: 0.5em; }
+        h1, h2, h3, h4, h5, h6 { text-indent: 0 !important; font-weight: bold; }
+        blockquote { margin: 0.5em 0; padding: 0.5em 1em; border-left: 3px solid #4f6ef7; background: #f8f9fa; color: #555; }
+        blockquote p { text-indent: 0 !important; margin-bottom: 0; }
+        hr { border: none; border-top: 1px dashed #ccc; margin: 1.5em 0; }
+      </style>
+      ${htmlContent}
+    </div>`;
 
-    // 5. 页面尺寸计算
+    // 页面尺寸计算
     const mmToPx = 3.779528;
     const marginMm = 12;
     const usableW = 210 - marginMm*2, usableH = 297 - marginMm*2;
     const cssW = Math.floor(usableW*mmToPx), cssPageH = Math.floor(usableH*mmToPx);
 
-    // 6. 创建隐藏容器并渲染
+    // 创建隐藏容器并渲染
     container = document.createElement('div');
     container.style.cssText = `position:absolute;left:-9999px;top:0;width:${cssW}px;height:${cssPageH}px;overflow:hidden;background:#fff;`;
     container.innerHTML = htmlContent;
@@ -891,22 +895,21 @@ async function genPDF(text, name) {
     await new Promise(r => requestAnimationFrame(r));
     const totalH = container.scrollHeight;
 
-    // 7. 分页截图生成 PDF
+    // 分页截图生成 PDF（带重叠避免切断文字）
     const doc = new jsPDF('p', 'mm', 'a4');
     let pageCount = 0, scroll = 0;
-    const overlap = 5; // 每页重叠 5 像素
-scroll += (cssPageH - overlap);
-while (scroll < totalH) {
-  container.scrollTop = scroll;
-  await new Promise(r => requestAnimationFrame(r));
-  const canvas = await html2canvas(container, { scale:2, useCORS:true, allowTaint:true, logging:false });
-  const imgData = canvas.toDataURL('image/jpeg', 0.92);
-  if (pageCount > 0) doc.addPage();
-  const imgH = (canvas.height / (cssW*2)) * usableW;
-  doc.addImage(imgData, 'JPEG', marginMm, marginMm, usableW, imgH);
-  scroll += (cssPageH - overlap); // 每次滚动略少于一页高度
-  pageCount++;
-}
+    const overlap = 5;
+    while (scroll < totalH) {
+      container.scrollTop = scroll;
+      await new Promise(r => requestAnimationFrame(r));
+      const canvas = await html2canvas(container, { scale:2, useCORS:true, allowTaint:true, logging:false });
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      if (pageCount > 0) doc.addPage();
+      const imgH = (canvas.height / (cssW*2)) * usableW;
+      doc.addImage(imgData, 'JPEG', marginMm, marginMm, usableW, imgH);
+      scroll += (cssPageH - overlap);
+      pageCount++;
+    }
     if (container.parentNode) container.parentNode.removeChild(container);
     console.log(`✅ PDF 共 ${pageCount} 页`);
     return { blob: doc.output('blob'), filename: `${name}.pdf` };
