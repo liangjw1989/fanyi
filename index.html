@@ -454,8 +454,22 @@
   }
 
   function renderFileItem(f, type) {
+    // 生成格式选择下拉框（仅翻译模式显示）
+    let formatSelect = '';
+    if (type === 'translate') {
+      formatSelect = `<select class="fmt-select" data-id="${f.id}">
+        <option value="pdf" ${f.fmt === 'pdf' ? 'selected' : ''}>PDF (通篇翻译)</option>
+        <option value="bilingual-vertical" ${f.fmt === 'bilingual-vertical' ? 'selected' : ''}>对照 (上下排列)</option>
+        <option value="bilingual-horizontal" ${f.fmt === 'bilingual-horizontal' ? 'selected' : ''}>对照 (左右分栏)</option>
+        <option value="docx" ${f.fmt === 'docx' ? 'selected' : ''}>DOCX</option>
+        <option value="txt" ${f.fmt === 'txt' ? 'selected' : ''}>TXT</option>
+        <option value="html" ${f.fmt === 'html' ? 'selected' : ''}>HTML</option>
+      </select>`;
+    }
+
     const actionBtn = `<button class="btn btn-primary btn-sm process-btn" data-id="${f.id}"><i class="fas fa-play"></i> ${type==='translate'?'翻译':'转换'}</button>`;
     const deleteBtn = `<button class="btn btn-danger btn-sm delete-btn" data-id="${f.id}"><i class="fas fa-trash"></i></button>`;
+
     return `
       <div class="file-item" data-file-id="${f.id}">
         <i class="fas fa-file file-icon"></i>
@@ -464,9 +478,9 @@
           <div class="progress-bar"><div class="progress-fill" style="width:${f.progress}%"></div></div>
           <small>${f.status}</small>
         </div>
-        <div class="file-actions">${actionBtn}${deleteBtn}</div>
+        <div class="file-actions">${formatSelect}${actionBtn}${deleteBtn}</div>
       </div>`;
-  }
+}
 
   function bindEvents() {
     document.querySelectorAll('.process-btn').forEach(b => b.addEventListener('click', () => {
@@ -880,7 +894,8 @@ async function genPDF(text, name) {
     // 7. 分页截图生成 PDF
     const doc = new jsPDF('p', 'mm', 'a4');
     let pageCount = 0, scroll = 0;
-    const overlap = 5; // 每页重叠 5 像素，避免文字被切断
+    const overlap = 5; // 每页重叠 5 像素
+scroll += (cssPageH - overlap);
 while (scroll < totalH) {
   container.scrollTop = scroll;
   await new Promise(r => requestAnimationFrame(r));
