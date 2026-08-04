@@ -783,8 +783,24 @@ if (outputFormat === 'bilingual-vertical' || outputFormat === 'bilingual-horizon
       f.translatedText = translated;
       f.progress = 80; updateFileProgress(f);
 
-      const { blob, filename } = await genPDF(translated, f.name);
-      f.blobUrl = URL.createObjectURL(blob); f.filename = filename; f.status = 'done';
+      // 根据输出格式选择不同的生成函数
+let blob, filename;
+if (f.fmt === 'bilingual-vertical' || f.fmt === 'bilingual-horizontal') {
+  // 双语对照格式：使用 genPDF 并传入 layout 参数
+  const layout = f.fmt === 'bilingual-horizontal' ? 'bilingual-horizontal' : 'bilingual-vertical';
+  const result = await genPDF(translated, f.name, layout);
+  blob = result.blob;
+  filename = result.filename;
+} else {
+  // 普通格式：直接调用 genPDF（或其他生成函数）
+  const result = await genPDF(translated, f.name, 'full');
+  blob = result.blob;
+  filename = result.filename;
+}
+
+f.blobUrl = URL.createObjectURL(blob);
+f.filename = filename;
+f.status = 'done';
       state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
       state.completed.push(f); addRecord(f);
       showToast('翻译完成');
