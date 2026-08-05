@@ -454,21 +454,48 @@
   }
 
   function renderFileItem(f, type) {
-    // 生成格式选择下拉框（仅在翻译模式显示）
-let formatSelect = '';
-if (type === 'translate') {
-  formatSelect = `<select class="fmt-select" data-id="${f.id}">
-    <option value="pdf" ${f.fmt === 'pdf' ? 'selected' : ''}>PDF (通篇翻译)</option>
-    <option value="bilingual-vertical" ${f.fmt === 'bilingual-vertical' ? 'selected' : ''}>对照 (上下排列)</option>
-    <option value="bilingual-horizontal" ${f.fmt === 'bilingual-horizontal' ? 'selected' : ''}>对照 (左右分栏)</option>
-    <option value="docx" ${f.fmt === 'docx' ? 'selected' : ''}>DOCX</option>
-    <option value="txt" ${f.fmt === 'txt' ? 'selected' : ''}>TXT</option>
-    <option value="html" ${f.fmt === 'html' ? 'selected' : ''}>HTML</option>
-  </select>`;
-}
+    // 生成语言选择下拉框（仅翻译模式显示）
+    const langSelect = type === 'translate'
+      ? `<select class="lang-select" data-id="${f.id}">
+           <option value="zh-CN" ${f.targetLang==='zh-CN'?'selected':''}>中文</option>
+           <option value="en" ${f.targetLang==='en'?'selected':''}>English</option>
+           <option value="ja" ${f.targetLang==='ja'?'selected':''}>日本語</option>
+           <option value="ko" ${f.targetLang==='ko'?'selected':''}>한국어</option>
+           <option value="fr" ${f.targetLang==='fr'?'selected':''}>Français</option>
+           <option value="de" ${f.targetLang==='de'?'selected':''}>Deutsch</option>
+         </select>`
+      : '';
 
-    const actionBtn = `<button class="btn btn-primary btn-sm process-btn" data-id="${f.id}"><i class="fas fa-play"></i> ${type==='translate'?'翻译':'转换'}</button>`;
+    // 生成格式选择下拉框
+    let formatSelect = '';
+    if (type === 'translate') {
+      // 翻译模式：提供完整格式选项
+      formatSelect = `<select class="fmt-select" data-id="${f.id}">
+        <option value="pdf" ${f.fmt === 'pdf' ? 'selected' : ''}>PDF (通篇翻译)</option>
+        <option value="bilingual-vertical" ${f.fmt === 'bilingual-vertical' ? 'selected' : ''}>对照 (上下排列)</option>
+        <option value="bilingual-horizontal" ${f.fmt === 'bilingual-horizontal' ? 'selected' : ''}>对照 (左右分栏)</option>
+        <option value="docx" ${f.fmt === 'docx' ? 'selected' : ''}>DOCX</option>
+        <option value="txt" ${f.fmt === 'txt' ? 'selected' : ''}>TXT</option>
+        <option value="html" ${f.fmt === 'html' ? 'selected' : ''}>HTML</option>
+      </select>`;
+    } else {
+      // 转换模式：提供转换格式选项
+      formatSelect = `<select class="fmt-select" data-id="${f.id}">
+        <option value="pdf" ${f.fmt === 'pdf' ? 'selected' : ''}>PDF</option>
+        <option value="docx" ${f.fmt === 'docx' ? 'selected' : ''}>DOCX</option>
+        <option value="txt" ${f.fmt === 'txt' ? 'selected' : ''}>TXT</option>
+      </select>`;
+    }
+
+    const actionLabel = type === 'translate' ? '翻译' : '转换';
+    const actionBtn = `<button class="btn btn-primary btn-sm process-btn" data-id="${f.id}"><i class="fas fa-play"></i> ${actionLabel}</button>`;
     const deleteBtn = `<button class="btn btn-danger btn-sm delete-btn" data-id="${f.id}"><i class="fas fa-trash"></i></button>`;
+
+    let statusBadge = '';
+    if (f.status === 'error') statusBadge = '<span class="status-badge error">失败</span>';
+    else if (f.status === 'done') statusBadge = '<span class="status-badge done">完成</span>';
+    else if (f.status === 'translating' || f.status === 'extracting') statusBadge = '<span class="status-badge processing">处理中</span>';
+    else statusBadge = '<span class="status-badge pending">等待</span>';
 
     return `
       <div class="file-item" data-file-id="${f.id}">
@@ -476,9 +503,9 @@ if (type === 'translate') {
         <div class="file-info">
           <div class="file-name">${escapeHtml(f.name)}</div>
           <div class="progress-bar"><div class="progress-fill" style="width:${f.progress}%"></div></div>
-          <small>${f.status}</small>
+          <small>${statusBadge}</small>
         </div>
-        <div class="file-actions">${formatSelect}${actionBtn}${deleteBtn}</div>
+        <div class="file-actions">${langSelect}${formatSelect}${actionBtn}${deleteBtn}</div>
       </div>`;
 }
 
