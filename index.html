@@ -454,18 +454,18 @@
   }
 
   function renderFileItem(f, type) {
-    // 生成格式选择下拉框（仅翻译模式显示）
-    let formatSelect = '';
-    if (type === 'translate') {
-      formatSelect = `<select class="fmt-select" data-id="${f.id}">
-        <option value="pdf" ${f.fmt === 'pdf' ? 'selected' : ''}>PDF (通篇翻译)</option>
-        <option value="bilingual-vertical" ${f.fmt === 'bilingual-vertical' ? 'selected' : ''}>对照 (上下排列)</option>
-        <option value="bilingual-horizontal" ${f.fmt === 'bilingual-horizontal' ? 'selected' : ''}>对照 (左右分栏)</option>
-        <option value="docx" ${f.fmt === 'docx' ? 'selected' : ''}>DOCX</option>
-        <option value="txt" ${f.fmt === 'txt' ? 'selected' : ''}>TXT</option>
-        <option value="html" ${f.fmt === 'html' ? 'selected' : ''}>HTML</option>
-      </select>`;
-    }
+    // 生成格式选择下拉框（仅在翻译模式显示）
+let formatSelect = '';
+if (type === 'translate') {
+  formatSelect = `<select class="fmt-select" data-id="${f.id}">
+    <option value="pdf" ${f.fmt === 'pdf' ? 'selected' : ''}>PDF (通篇翻译)</option>
+    <option value="bilingual-vertical" ${f.fmt === 'bilingual-vertical' ? 'selected' : ''}>对照 (上下排列)</option>
+    <option value="bilingual-horizontal" ${f.fmt === 'bilingual-horizontal' ? 'selected' : ''}>对照 (左右分栏)</option>
+    <option value="docx" ${f.fmt === 'docx' ? 'selected' : ''}>DOCX</option>
+    <option value="txt" ${f.fmt === 'txt' ? 'selected' : ''}>TXT</option>
+    <option value="html" ${f.fmt === 'html' ? 'selected' : ''}>HTML</option>
+  </select>`;
+}
 
     const actionBtn = `<button class="btn btn-primary btn-sm process-btn" data-id="${f.id}"><i class="fas fa-play"></i> ${type==='translate'?'翻译':'转换'}</button>`;
     const deleteBtn = `<button class="btn btn-danger btn-sm delete-btn" data-id="${f.id}"><i class="fas fa-trash"></i></button>`;
@@ -697,37 +697,50 @@ async function extractImage(file) {
 }
 
     // ==================== 统一排版 callProxy（所有文档腾讯云翻译 + 全文 DeepSeek 排版） ====================
+/**
+ * 统一翻译代理函数
+ * 根据输出格式自动选择翻译引擎：
+ * - 普通格式（PDF/DOCX/TXT/HTML）：走腾讯云翻译 + DeepSeek 排版流程
+ * - 双语对照格式（bilingual-vertical/bilingual-horizontal）：走双语对照流程
+ *
+ * @param {string} text - 待翻译的原文文本
+ * @param {string} target - 目标语言代码，如 'zh-CN'
+ * @param {string} outputFormat - 输出格式，默认为 'pdf'
+ * @returns {string} 翻译后的文本（可能是纯译文，也可能是带标记的对照文本）
+ */
 async function callProxy(text, target, outputFormat = 'pdf') {
-  // 双语对照分支
-if (outputFormat === 'bilingual-vertical' || outputFormat === 'bilingual-horizontal') {
-  const layout = outputFormat === 'bilingual-horizontal' ? 'horizontal' : 'vertical';
-  const res = await fetch(API_PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, target, engine: 'bilingual', layout })
-  });
-  const data = await res.json();
-  if (data.code === 0) {
-    console.log('✅ 双语对照生成完成');
-    return data.result;
-  } else {
-    throw new Error(data.result || '双语对照生成失败');
-  }
-}
-// 腾讯云语言代码映射
+  // 腾讯云只接受简写的语言代码，这里做转换映射
   const langMap = {
     'zh-CN': 'zh', 'zh': 'zh', 'en': 'en', 'ja': 'ja',
     'ko': 'ko', 'fr': 'fr', 'de': 'de', 'es': 'es', 'ru': 'ru',
     'pt': 'pt', 'it': 'it', 'ar': 'ar', 'th': 'th', 'vi': 'vi'
   };
-  const tencentTarget = langMap[target] || target;
-  const MAX_CHUNK = 3000; // 腾讯云单次最大 6000 字符，这里取安全值
+  const tencentTarget = langMap[target] || target;  // 腾讯云使用的语言代码
 
-  // ========== 第一步：腾讯云翻译（长文本自动分段） ==========
-  let translatedText = '';
+  // ========== 分支一：双语对照翻译 ==========
+  if (outputFormat === 'bilingual-vertical' || outputFormat === 'bilingual-horizontal') {
+    console.log('📝 开始双语对照翻译...');
+    // 调用云函数的 bilingual 引擎，返回带 [ORIG] 和 [TRANS] 标记的对照文本
+    const res = await fetch(API_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, target, engine: 'bilingual' })
+    });
+    const data = await res.json();
+    if (data.code === 0) {
+      console.log('✅ 双语对照翻译完成');
+      return data.result;  // 返回包含 [ORIG]...[TRANS]... 标记的对照文本
+    } else {
+      throw new Error(data.result || '双语对照翻译失败，请稍后重试');
+    }
+  }
 
+  // ========== 分支二：普通翻译（腾讯云翻译 + DeepSeek 排版） ==========
+  const MAX_CHUNK = 3000;  // 腾讯云单次翻译的最大字符数（安全值）
+  let translatedText = '';  // 存储翻译结果
+
+  // 短文本：直接一次性翻译
   if (text.length <= MAX_CHUNK) {
-    // 短文本直接翻译
     const res = await fetch(API_PROXY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -737,15 +750,18 @@ if (outputFormat === 'bilingual-vertical' || outputFormat === 'bilingual-horizon
     if (data.code !== 0) throw new Error(data.result || '腾讯云翻译失败');
     translatedText = data.result;
   } else {
-    // 长文本分段翻译
+    // 长文本：按句子拆分后分段翻译，避免截断
     const sentences = text.match(/[^。！？\.!\?\n]+[。！？\.!\?\n]+|[^。！？\.!\?\n]+$/g) || [text];
     let batches = [], cur = '';
+    // 将句子按 MAX_CHUNK 大小合并为批次
     for (const s of sentences) {
       if ((cur + s).length > MAX_CHUNK && cur) { batches.push(cur.trim()); cur = s; }
       else cur += s;
     }
     if (cur.trim()) batches.push(cur.trim());
-    console.log(`📦 腾讯云翻译分为 ${batches.length} 段`);
+    console.log(`📦 腾讯云翻译分为 ${batches.length} 段进行`);
+
+    // 逐段翻译并拼接结果
     const results = [];
     for (const batch of batches) {
       const res = await fetch(API_PROXY_URL, {
@@ -757,14 +773,14 @@ if (outputFormat === 'bilingual-vertical' || outputFormat === 'bilingual-horizon
       if (data.code !== 0) throw new Error(data.result || '腾讯云翻译失败');
       results.push(data.result);
     }
-    translatedText = results.join('\n\n');
+    translatedText = results.join('\n\n');  // 用双换行拼接各段翻译
   }
 
   console.log('✅ 腾讯云翻译完成');
 
-  // ========== 第二步：DeepSeek 全文排版（不翻译） ==========
+  // 调用 DeepSeek 进行排版优化（将纯文本转为带格式的 Markdown）
   try {
-    console.log('📝 正在用 DeepSeek 优化全文排版...');
+    console.log('📝 正在用 DeepSeek 优化排版...');
     const fmtRes = await fetch(API_PROXY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -773,13 +789,13 @@ if (outputFormat === 'bilingual-vertical' || outputFormat === 'bilingual-horizon
     const fmtData = await fmtRes.json();
     if (fmtData.code === 0) {
       console.log('✅ 排版优化完成');
-      return fmtData.result;
+      return fmtData.result;  // 返回排版后的 Markdown 文本
     } else {
-      console.warn('排版优化失败，使用未排版的翻译结果');
-      return translatedText;
+      console.warn('排版优化失败，将使用未排版的翻译结果');
+      return translatedText;  // 降级方案：返回未排版的纯文本
     }
   } catch (fmtErr) {
-    console.warn('排版优化请求失败，使用未排版的翻译结果:', fmtErr.message);
+    console.warn('排版优化请求失败，将使用未排版的翻译结果:', fmtErr.message);
     return translatedText;
   }
 }
@@ -793,7 +809,8 @@ if (outputFormat === 'bilingual-vertical' || outputFormat === 'bilingual-horizon
       f.extractedText = text;
       f.status='translating'; f.progress=30; updateFileProgress(f);
 
-      const translated = await callProxy(text, f.targetLang, f.fmt);
+      // 调用翻译代理函数，传入原文、目标语言和输出格式
+     const translated = await callProxy(text, f.targetLang, f.fmt);
       f.translatedText = translated;
       f.progress = 80; updateFileProgress(f);
 
@@ -838,91 +855,161 @@ f.status = 'done';
   }
 
   // ==================== 增强版 PDF 生成函数（修复双语对照 + 分页优化） ====================
+/**
+ * 增强版 PDF 生成函数
+ * 支持三种排版模式：
+ * - 'full'：通篇翻译（纯译文）
+ * - 'bilingual-vertical'：上下对照（原文块在上，译文块在下）
+ * - 'bilingual-horizontal'：左右对照（暂未实现，保留参数）
+ *
+ * @param {string} text - 要生成 PDF 的文本内容
+ * @param {string} name - 输出 PDF 的文件名（不含扩展名）
+ * @param {string} layout - 排版模式，默认为 'full'
+ * @returns {Object} 包含 blob（PDF 二进制数据）和 filename（完整文件名）
+ */
 async function genPDF(text, name, layout = 'full') {
-  let container = null;
+  let container = null;  // 用于渲染 HTML 的隐藏容器
   try {
+    // 检查依赖库是否正确加载
     const { jsPDF } = window.jspdf;
-    if (!jsPDF || typeof html2canvas !== 'function') throw new Error('依赖库未加载');
-
-    // ---------- 1. 文本预处理：修复可能被云函数转义的引用块标记 ----------
-    let processedText = text || '暂无内容';
-    // 将 \> 替换为 > （云函数可能对 Markdown 标记进行了不必要的转义）
-    processedText = processedText.replace(/\\>/g, '>');
-
-    // ---------- 2. Markdown 转 HTML ----------
-    let htmlContent;
-    if (typeof marked !== 'undefined') {
-      htmlContent = marked.parse(processedText);
-    } else {
-      htmlContent = processedText.replace(/\n/g, '<br>');
+    if (!jsPDF || typeof html2canvas !== 'function') {
+      throw new Error('依赖库未加载，请检查 jsPDF 和 html2canvas 是否正确引入');
     }
 
-    // ---------- 3. 处理特殊标签（页眉、页脚、注解） ----------
-    htmlContent = htmlContent
-      .replace(/&lt;header&gt;([\s\S]*?)&lt;\/header&gt;/g,
-        '<div class="page-header" style="font-size:12px; color:#666; border-bottom:1px solid #ccc; margin-bottom:1em; padding-bottom:0.5em;">$1</div>')
-      .replace(/&lt;footer&gt;([\s\S]*?)&lt;\/footer&gt;/g,
-        '<div class="page-footer" style="font-size:12px; color:#666; border-top:1px solid #ccc; margin-top:1em; padding-top:0.5em;">$1</div>')
-      .replace(/&lt;note&gt;([\s\S]*?)&lt;\/note&gt;/g,
-        '<div class="annotation" style="font-size:13px; margin-left:1em; padding:0.5em; border-left:3px solid #aaa; color:#444; background:#f9f9f9;">$1</div>');
+    let htmlContent;  // 最终的 HTML 内容
 
-    // ---------- 4. 表格添加边框 ----------
-    htmlContent = htmlContent
-      .replace(/<table>/g, '<table style="border-collapse:collapse; width:100%; margin:1em 0;">')
-      .replace(/<th>/g, '<th style="border:1px solid #000; padding:8px; background:#f0f0f0; font-weight:bold;">')
-      .replace(/<td>/g, '<td style="border:1px solid #000; padding:8px;">');
+    // ---------- 分支一：双语对照模式 ----------
+    if (layout === 'bilingual-vertical' && text.includes('[ORIG]') && text.includes('[TRANS]')) {
+      // 提取原文和译文部分
+      const origMatch = text.match(/\[ORIG\]([\s\S]*?)\[\/ORIG\]/);
+      const transMatch = text.match(/\[TRANS\]([\s\S]*?)\[\/TRANS\]/);
+      const original = origMatch ? origMatch[1].trim() : '';
+      const translated = transMatch ? transMatch[1].trim() : '';
 
-    // ---------- 5. 包裹基础样式 + 引用块样式 ----------
-    htmlContent = `<div style="font-family:'SimSun','宋体',serif; font-size:16px; line-height:1.9; color:#000; padding:18px; box-sizing:border-box;">
-      <style>
-        p { text-indent: 2em !important; margin-bottom: 0.5em; }
-        h1, h2, h3, h4, h5, h6 { text-indent: 0 !important; font-weight: bold; }
-        blockquote { margin: 0.5em 0; padding: 0.5em 1em; border-left: 3px solid #4f6ef7; background: #f8f9fa; color: #555; }
-        blockquote p { text-indent: 0 !important; margin-bottom: 0; }
-        hr { border: none; border-top: 1px dashed #ccc; margin: 1.5em 0; }
-      </style>
-      ${htmlContent}
-    </div>`;
+      // 按段落拆分原文和译文
+      const origParas = original.split(/\n\s*\n/).filter(p => p.trim());
+      const transParas = translated.split(/\n\s*\n/).filter(p => p.trim());
 
-    // ---------- 6. 页面尺寸计算 ----------
-    const mmToPx = 3.779528;
-    const marginMm = 12;
-    const usableW = 210 - marginMm * 2, usableH = 297 - marginMm * 2;
-    const cssW = Math.floor(usableW * mmToPx), cssPageH = Math.floor(usableH * mmToPx);
+      // 逐段拼接对照格式的 HTML
+      let bilingualHTML = '';
+      const maxLen = Math.max(origParas.length, transParas.length);
+      for (let i = 0; i < maxLen; i++) {
+        const orig = origParas[i] ? escapeHtml(origParas[i]) : '';
+        const trans = transParas[i] ? escapeHtml(transParas[i]) : '';
+        bilingualHTML += `
+          <div class="bilingual-block" style="margin-bottom:1.2em;">
+            <div class="orig-text" style="margin-bottom:0.3em; padding:0.5em 1em; border-left:3px solid #4f6ef7; background:#f8f9fa; color:#555;">
+              ${orig}
+            </div>
+            <div class="trans-text" style="padding-left:1em;">
+              ${trans}
+            </div>
+          </div>
+        `;
+      }
 
-    // ---------- 7. 创建隐藏容器并渲染 ----------
+      // 直接使用拼接好的 HTML，跳过 Markdown 解析
+      htmlContent = `<div style="font-family:'SimSun','宋体',serif; font-size:16px; line-height:1.9; color:#000; padding:18px; box-sizing:border-box;">
+        <style>
+          p { text-indent: 2em !important; margin-bottom: 0.5em; }
+          h1, h2, h3, h4, h5, h6 { text-indent: 0 !important; font-weight: bold; }
+          .orig-text p { text-indent: 0 !important; }
+          .trans-text p { text-indent: 2em !important; }
+        </style>
+        ${bilingualHTML}
+      </div>`;
+    } else {
+      // ---------- 分支二：通篇翻译模式 ----------
+      // 将 Markdown 转换为 HTML
+      if (typeof marked !== 'undefined') {
+        htmlContent = marked.parse(text || '暂无内容');
+      } else {
+        htmlContent = (text || '暂无内容').replace(/\n/g, '<br>');
+      }
+
+      // 处理特殊标签（页眉、页脚、注解）
+      htmlContent = htmlContent
+        .replace(/&lt;header&gt;([\s\S]*?)&lt;\/header&gt;/g,
+          '<div class="page-header" style="font-size:12px; color:#666; border-bottom:1px solid #ccc; margin-bottom:1em; padding-bottom:0.5em;">$1</div>')
+        .replace(/&lt;footer&gt;([\s\S]*?)&lt;\/footer&gt;/g,
+          '<div class="page-footer" style="font-size:12px; color:#666; border-top:1px solid #ccc; margin-top:1em; padding-top:0.5em;">$1</div>')
+        .replace(/&lt;note&gt;([\s\S]*?)&lt;\/note&gt;/g,
+          '<div class="annotation" style="font-size:13px; margin-left:1em; padding:0.5em; border-left:3px solid #aaa; color:#444; background:#f9f9f9;">$1</div>');
+
+      // 为表格添加边框样式
+      htmlContent = htmlContent
+        .replace(/<table>/g, '<table style="border-collapse:collapse; width:100%; margin:1em 0;">')
+        .replace(/<th>/g, '<th style="border:1px solid #000; padding:8px; background:#f0f0f0; font-weight:bold;">')
+        .replace(/<td>/g, '<td style="border:1px solid #000; padding:8px;">');
+
+      // 包裹基础样式
+      htmlContent = `<div style="font-family:'SimSun','宋体',serif; font-size:16px; line-height:1.9; color:#000; padding:18px; box-sizing:border-box;">
+        <style>
+          p { text-indent: 2em !important; margin-bottom: 0.5em; }
+          h1, h2, h3, h4, h5, h6 { text-indent: 0 !important; font-weight: bold; }
+          blockquote { margin: 0.5em 0; padding: 0.5em 1em; border-left: 3px solid #4f6ef7; background: #f8f9fa; color: #555; }
+          blockquote p { text-indent: 0 !important; margin-bottom: 0; }
+          hr { border: none; border-top: 1px dashed #ccc; margin: 1.5em 0; }
+        </style>
+        ${htmlContent}
+      </div>`;
+    }
+
+    // ---------- 页面尺寸计算 ----------
+    const mmToPx = 3.779528;            // 毫米转像素的换算比例
+    const marginMm = 12;                 // 页面边距 12mm
+    const usableW = 210 - marginMm * 2;  // A4 纸可用宽度 186mm
+    const usableH = 297 - marginMm * 2;  // A4 纸可用高度 273mm
+    const cssW = Math.floor(usableW * mmToPx);     // 转换为像素宽度
+    const cssPageH = Math.floor(usableH * mmToPx); // 转换为像素高度
+
+    // ---------- 创建隐藏容器并渲染 HTML ----------
     container = document.createElement('div');
     container.style.cssText = `position:absolute;left:-9999px;top:0;width:${cssW}px;height:${cssPageH}px;overflow:hidden;background:#fff;`;
     container.innerHTML = htmlContent;
     document.body.appendChild(container);
 
-    // 等待渲染完成
+    // 等待浏览器完成布局渲染
     await new Promise(r => requestAnimationFrame(r));
     await new Promise(r => requestAnimationFrame(r));
-    const totalH = container.scrollHeight;
+    const totalH = container.scrollHeight;  // 获取内容总高度
 
-    // ---------- 8. 分页截图（增大重叠量，彻底解决文字切断） ----------
+    // ---------- 分页截图生成 PDF ----------
     const doc = new jsPDF('p', 'mm', 'a4');
     let pageCount = 0, scroll = 0;
-    const overlap = 20; // 增大到 20 像素，确保跨页行完整
+    const overlap = 20;  // 每页重叠 20 像素，防止文字在页面边界被拦腰截断
 
     while (scroll < totalH) {
-      container.scrollTop = scroll;
+      container.scrollTop = scroll;  // 滚动容器到当前截图位置
       await new Promise(r => requestAnimationFrame(r));
-      const canvas = await html2canvas(container, { scale: 2, useCORS: true, allowTaint: true, logging: false });
-      const imgData = canvas.toDataURL('image/jpeg', 0.92);
-      if (pageCount > 0) doc.addPage();
+
+      // 使用 html2canvas 截图当前可见区域
+      const canvas = await html2canvas(container, {
+        scale: 2,          // 2 倍清晰度，保证 PDF 中文字清晰
+        useCORS: true,     // 允许跨域资源
+        allowTaint: true,
+        logging: false     // 关闭调试日志
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);  // 转为 JPEG 格式
+      if (pageCount > 0) doc.addPage();  // 非第一页时添加新页
+
+      // 计算图片在 PDF 中的高度（保持宽高比）
       const imgH = (canvas.height / (cssW * 2)) * usableW;
       doc.addImage(imgData, 'JPEG', marginMm, marginMm, usableW, imgH);
+
+      // 向下滚动，减去重叠量避免切断文字
       scroll += (cssPageH - overlap);
       pageCount++;
     }
 
-    // 清理容器
+    // 清理临时容器
     if (container.parentNode) container.parentNode.removeChild(container);
     console.log(`✅ PDF 生成成功，共 ${pageCount} 页`);
     return { blob: doc.output('blob'), filename: `${name}.pdf` };
+
   } catch (err) {
+    // 错误处理：清理容器并返回错误 PDF
     if (container && container.parentNode) container.parentNode.removeChild(container);
     console.error('PDF 生成出错：', err);
     const { jsPDF } = window.jspdf;
