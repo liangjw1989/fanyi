@@ -349,20 +349,13 @@
 
   // 标签切换
   translateTabBtn.addEventListener('click', () => {
-    translateTabBtn.classList.add('active');
-    convertTabBtn.classList.remove('active');
-    translateModule.style.display = 'block';
-    convertModule.style.display = 'none';
-    renderAll();
-});
-
-convertTabBtn.addEventListener('click', () => {
-    convertTabBtn.classList.add('active');
-    translateTabBtn.classList.remove('active');
-    translateModule.style.display = 'none';
-    convertModule.style.display = 'block';
-    renderAll();
-});
+    translateTabBtn.classList.add('active'); convertTabBtn.classList.remove('active');
+    translateModule.style.display = 'block'; convertModule.style.display = 'none';
+  });
+  convertTabBtn.addEventListener('click', () => {
+    convertTabBtn.classList.add('active'); translateTabBtn.classList.remove('active');
+    translateModule.style.display = 'none'; convertModule.style.display = 'block';
+  });
 
   // 文件上传 (透明 input 方式，一次点击)
   translateFileInput.addEventListener('change', e => {
@@ -426,104 +419,86 @@ convertTabBtn.addEventListener('click', () => {
   loginBtn.addEventListener('click', () => loginModal?.classList.add('active'));
   // ... 其他模态框事件可自行补充，不影响核心功能
 
- /**
- * 文件添加处理函数
- * 当用户上传文件时，对每个文件进行格式校验，并创建对应的文件对象
- * 根据操作类型（翻译或转换）设置默认的输出格式
- *
- * @param {FileList} files - 用户上传的文件列表
- * @param {string} type - 操作类型：'translate' 翻译，'convert' 格式转换
- */
-function addFiles(files, type) {
-    // 遍历用户上传的每一个文件
+  // 文件处理
+  function addFiles(files, type) {
     for (const file of files) {
-        // 获取文件扩展名并转为小写，用于判断文件类型
-        const ext = file.name.split('.').pop().toLowerCase();
-
-        // 检查文件格式是否在支持列表中
-        const supportedFormats = ['pdf', 'docx', 'doc', 'txt', 'png', 'jpg', 'jpeg'];
-        if (!supportedFormats.includes(ext)) {
-            // 不支持的格式，弹出提示并跳过该文件
-            showToast(`不支持的文件格式: ${file.name}`, true);
-            continue;
-        }
-
-        // 根据操作类型和文件扩展名，设置默认的输出格式
-        let defaultFmt = 'pdf';  // 默认输出 PDF
-        if (type === 'translate') {
-            // 翻译模式：默认输出 PDF
-            defaultFmt = 'pdf';
-        } else {
-            // 转换模式：根据源文件类型设置默认目标格式
-            if (ext === 'pdf') {
-                defaultFmt = 'docx';  // PDF 默认转为 DOCX
-            } else if (ext === 'docx' || ext === 'doc') {
-                defaultFmt = 'pdf';   // Word 默认转为 PDF
-            } else {
-                defaultFmt = 'txt';   // 其他格式默认转为 TXT
-            }
-        }
-
-        // 创建文件对象，包含文件的所有相关信息
-        const fileObj = {
-            id: state.nextId++,       // 唯一标识，自增
-            file: file,               // 原始文件对象
-            name: file.name,          // 文件名（含扩展名）
-            ext: ext,                 // 文件扩展名
-            type: type,               // 操作类型：'translate' 或 'convert'
-            status: 'pending',        // 状态：pending（等待）、translating（翻译中）、done（完成）、error（失败）
-            progress: 0,              // 处理进度，0-100
-            targetLang: 'zh-CN',      // 目标翻译语言，默认中文
-            fmt: defaultFmt,          // 输出格式，根据操作类型和文件类型自动设置
-            extractedText: '',        // 提取的原始文本内容
-            translatedText: ''        // 翻译后的文本内容
-        };
-
-        // 根据操作类型，将文件对象添加到对应的待处理列表
-        if (type === 'translate') {
-            state.translateFiles.push(fileObj);
-        } else {
-            state.convertFiles.push(fileObj);
-        }
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (!['pdf','docx','doc','txt','png','jpg','jpeg'].includes(ext)) {
+        showToast(`不支持格式: ${file.name}`, true); continue;
+      }
+      const fileObj = {
+        id: state.nextId++, file, name: file.name, ext, type,
+        status: 'pending', progress: 0, targetLang: 'zh-CN',
+        fmt: 'pdf', extractedText: '', translatedText: ''
+      };
+      if (type === 'translate') state.translateFiles.push(fileObj);
+      else state.convertFiles.push(fileObj);
     }
-
-    // 添加完成后刷新页面显示
     renderAll();
-}
+  }
 
-==================== renderAll ====================  
-/**
+  /**
  * 页面渲染函数
- * 更新翻译列表、转换列表和已完成列表，并根据当前标签页过滤已完成文档
+ * 负责更新三个列表的显示：
+ * - 翻译待处理列表
+ * - 格式转换待处理列表
+ * - 已完成文档列表
  */
 function renderAll() {
-    translateFileList.innerHTML = state.translateFiles.map(f => renderFileItem(f, 'translate')).join('');
-    convertFileList.innerHTML = state.convertFiles.map(f => renderFileItem(f, 'convert')).join('');
+    // 渲染翻译模块的文件列表
+    translateFileList.innerHTML = state.translateFiles
+        .map(f => renderFileItem(f, 'translate'))
+        .join('');
 
-    const isTranslateTab = translateModule.style.display !== 'none';
-    const filteredCompleted = state.completed.filter(f => {
-        return isTranslateTab ? f.type === 'translate' : f.type === 'convert';
-    });
+    // 渲染格式转换模块的文件列表
+    convertFileList.innerHTML = state.convertFiles
+        .map(f => renderFileItem(f, 'convert'))
+        .join('');
 
-    completedList.innerHTML = filteredCompleted.map(f => {
-        const displayText = escapeHtml((f.translatedText || f.extractedText || '').substring(0, 200));
+    // 渲染已完成文档列表
+    completedList.innerHTML = state.completed.map(f => {
+        // 截取前 200 个字符用于预览
+        const displayText = escapeHtml(
+            (f.translatedText || f.extractedText || '').substring(0, 200)
+        );
         return `
           <div class="file-item">
+            <!-- 完成状态图标 -->
             <i class="fas fa-check-circle" style="color:#10b981; font-size:1.5rem;"></i>
+            <!-- 文件信息 -->
             <div class="file-info">
                 <div class="file-name">${escapeHtml(f.name)}</div>
                 <small style="color:var(--text-secondary);">${f.filename}</small>
             </div>
+            <!-- 操作按钮组 -->
             <div class="file-actions">
-                <button class="btn btn-outline btn-sm view-btn" data-text="${displayText}"><i class="fas fa-eye"></i> 查看</button>
-                <button class="btn btn-outline btn-sm copy-btn" data-text="${displayText}"><i class="fas fa-copy"></i> 复制</button>
-                <button class="btn btn-primary btn-sm download-btn" data-url="${f.blobUrl}" data-filename="${f.filename}"><i class="fas fa-download"></i> 下载</button>
-                <button class="btn btn-danger btn-sm delete-completed-btn" data-id="${f.id}"><i class="fas fa-trash"></i></button>
+                <!-- 查看按钮：在新窗口预览翻译内容 -->
+                <button class="btn btn-outline btn-sm view-btn"
+                    data-text="${displayText}">
+                    <i class="fas fa-eye"></i> 查看
+                </button>
+                <!-- 复制按钮：将翻译内容复制到剪贴板 -->
+                <button class="btn btn-outline btn-sm copy-btn"
+                    data-text="${displayText}">
+                    <i class="fas fa-copy"></i> 复制
+                </button>
+                <!-- 下载按钮：触发浏览器下载文件 -->
+                <button class="btn btn-primary btn-sm download-btn"
+                    data-url="${f.blobUrl}"
+                    data-filename="${f.filename}">
+                    <i class="fas fa-download"></i> 下载
+                </button>
+                <!-- 删除按钮：从已完成列表中移除该文档 -->
+                <button class="btn btn-danger btn-sm delete-completed-btn"
+                    data-id="${f.id}">
+                    <i class="fas fa-trash"></i>
+                </button>
             </div>
           </div>
         `;
     }).join('') || '<div style="color:#94a3b8; text-align:center; padding:2rem;">暂无完成的文档</div>';
 
+    // 重新绑定所有事件（包括新增的删除按钮）
     bindEvents();
 }
 
@@ -585,60 +560,93 @@ function renderAll() {
 
   /**
  * 事件绑定函数
- * 为所有动态生成的按钮绑定点击事件
+ * 为页面上所有动态生成的按钮绑定对应的点击事件
+ * 包括：翻译/转换按钮、删除按钮、下载按钮、查看按钮、复制按钮、已完成文档删除按钮
  */
 function bindEvents() {
+    // ========== 绑定"翻译/转换"按钮事件 ==========
+    // 点击后根据文件类型执行翻译或格式转换
     document.querySelectorAll('.process-btn').forEach(b => {
         b.addEventListener('click', () => {
             const fileId = parseInt(b.dataset.id);
             const fileObj = findFile(fileId);
-            if (fileObj) processFile(fileObj);
+            if (fileObj) {
+                processFile(fileObj);
+            }
         });
     });
 
+    // ========== 绑定待处理列表的删除按钮事件 ==========
+    // 点击后将文件从待处理列表中移除
     document.querySelectorAll('.delete-btn').forEach(b => {
         b.addEventListener('click', () => {
             const fileId = parseInt(b.dataset.id);
+            // 从翻译待处理列表中移除
             state.translateFiles = state.translateFiles.filter(f => f.id !== fileId);
+            // 从转换待处理列表中移除
             state.convertFiles = state.convertFiles.filter(f => f.id !== fileId);
+            // 刷新界面
             renderAll();
         });
     });
 
+    // ========== 绑定下载按钮事件 ==========
+    // 点击后触发浏览器下载文件
     document.querySelectorAll('.download-btn').forEach(b => {
         b.addEventListener('click', () => {
+            const downloadUrl = b.dataset.url;
+            const downloadFilename = b.dataset.filename;
+            // 创建一个临时的 <a> 标签来触发下载
             const tempLink = document.createElement('a');
-            tempLink.href = b.dataset.url;
-            tempLink.download = b.dataset.filename;
+            tempLink.href = downloadUrl;
+            tempLink.download = downloadFilename;
             document.body.appendChild(tempLink);
             tempLink.click();
             document.body.removeChild(tempLink);
         });
     });
 
+    // ========== 绑定查看按钮事件 ==========
+    // 点击后在新窗口中预览翻译内容
     document.querySelectorAll('.view-btn').forEach(b => {
         b.addEventListener('click', () => {
+            const previewText = b.dataset.text;
+            // 打开新窗口并写入翻译内容
             const previewWindow = window.open('', '_blank');
-            previewWindow.document.write(`<pre style="white-space:pre-wrap; padding:1rem; font-family:SimSun,serif; line-height:2;">${b.dataset.text}</pre>`);
+            previewWindow.document.write(`
+                <pre style="white-space:pre-wrap; padding:1rem; font-family:SimSun,serif; line-height:2;">
+                    ${previewText}
+                </pre>
+            `);
         });
     });
 
+    // ========== 绑定复制按钮事件 ==========
+    // 点击后将翻译内容复制到剪贴板
     document.querySelectorAll('.copy-btn').forEach(b => {
         b.addEventListener('click', () => {
+            const copyText = b.dataset.text;
+            // 使用浏览器的剪贴板 API 进行复制
             if (navigator.clipboard) {
-                navigator.clipboard.writeText(b.dataset.text).then(() => showToast('已复制')).catch(() => showToast('复制失败', true));
+                navigator.clipboard.writeText(copyText)
+                    .then(() => showToast('已复制到剪贴板'))
+                    .catch(() => showToast('复制失败，请手动选择', true));
             } else {
                 showToast('复制失败，请手动选择', true);
             }
         });
     });
 
-    // 删除已完成文档
+    // ========== 绑定已完成文档的删除按钮事件 ==========
+    // 点击后将文档从已完成列表中移除
     document.querySelectorAll('.delete-completed-btn').forEach(b => {
         b.addEventListener('click', () => {
             const fileId = parseInt(b.dataset.id);
+            // 过滤掉被删除的文档，保留其他文档
             state.completed = state.completed.filter(f => f.id !== fileId);
+            // 刷新界面
             renderAll();
+            // 提示用户删除成功
             showToast('已删除该记录');
         });
     });
@@ -842,17 +850,17 @@ async function extractImage(file) {
   return text.trim();
 }
 
-    // ================= 统一排版 callProxy（所有文档腾讯云翻译 + 全文 DeepSeek 排版） =================//**
- /**
+    // ==================== 统一排版 callProxy（所有文档腾讯云翻译 + 全文 DeepSeek 排版） ====================
+/**
  * 统一翻译代理函数
- * 根据用户选择的输出格式，自动选择翻译引擎：
- * - 普通格式：腾讯云翻译 + DeepSeek 排版
- * - 双语对照格式：调用云函数 bilingual 引擎，返回带 [ORIG] 和 [TRANS] 标记的对照文本
+ * 根据输出格式自动选择翻译引擎：
+ * - 普通格式（PDF/DOCX/TXT/HTML）：走腾讯云翻译 + DeepSeek 排版流程
+ * - 双语对照格式（bilingual-vertical/bilingual-horizontal）：走双语对照流程
  *
- * @param {string} text - 待翻译的原文
- * @param {string} target - 目标语言代码，例如 'zh-CN'
- * @param {string} outputFormat - 输出格式，例如 'pdf'、'bilingual-vertical'，默认为 'pdf'
- * @returns {string} 翻译后的文本
+ * @param {string} text - 待翻译的原文文本
+ * @param {string} target - 目标语言代码，如 'zh-CN'
+ * @param {string} outputFormat - 输出格式，默认为 'pdf'
+ * @returns {string} 翻译后的文本（可能是纯译文，也可能是带标记的对照文本）
  */
 async function callProxy(text, target, outputFormat = 'pdf') {
   // 腾讯云只接受简写的语言代码，这里做转换映射
@@ -861,222 +869,255 @@ async function callProxy(text, target, outputFormat = 'pdf') {
     'ko': 'ko', 'fr': 'fr', 'de': 'de', 'es': 'es', 'ru': 'ru',
     'pt': 'pt', 'it': 'it', 'ar': 'ar', 'th': 'th', 'vi': 'vi'
   };
-  const tencentTarget = langMap[target] || target;
+  const tencentTarget = langMap[target] || target;  // 腾讯云使用的语言代码
 
   // ========== 分支一：双语对照翻译 ==========
-  // 当用户选择了上下对照或左右对照时，走这个分支
+  // 当用户选择了上下对照或左右对照模式时，走双语对照流程
   if (outputFormat === 'bilingual-vertical' || outputFormat === 'bilingual-horizontal') {
     console.log('📝 开始双语对照翻译...');
+    // 调用云函数的 bilingual 引擎，返回带 [ORIG] 和 [TRANS] 标记的对照文本
     const res = await fetch(API_PROXY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text: text,           // 待翻译的原文
         target: target,       // 目标语言
-        engine: 'bilingual'   // 使用双语对照引擎
+        engine: 'bilingual'   // 指定使用双语对照引擎
       })
     });
     const data = await res.json();
     if (data.code === 0) {
       console.log('✅ 双语对照翻译完成');
-      // 返回带 [ORIG]...[/ORIG] 和 [TRANS]...[/TRANS] 标记的对照文本
+      // 返回包含 [ORIG]...[TRANS]... 标记的对照文本
       return data.result;
     } else {
-      throw new Error(data.result || '双语对照翻译失败');
+      throw new Error(data.result || '双语对照翻译失败，请稍后重试');
     }
   }
 
   // ========== 分支二：普通翻译（腾讯云翻译 + DeepSeek 排版） ==========
-  const MAX_CHUNK = 3000;
-  let translatedText = '';
+  const MAX_CHUNK = 3000;  // 腾讯云单次翻译的最大字符数（安全值，实际限制 6000）
+  let translatedText = '';  // 存储翻译结果
 
+  // 短文本：直接一次性翻译，不用分段
   if (text.length <= MAX_CHUNK) {
     const res = await fetch(API_PROXY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, target: tencentTarget, engine: 'tencent' })
+      body: JSON.stringify({
+        text: text,                // 待翻译文本
+        target: tencentTarget,     // 目标语言（简写）
+        engine: 'tencent'          // 使用腾讯云翻译引擎
+      })
     });
     const data = await res.json();
-    if (data.code !== 0) throw new Error(data.result || '腾讯云翻译失败');
+    if (data.code !== 0) {
+      throw new Error(data.result || '腾讯云翻译失败，请检查额度是否用完');
+    }
     translatedText = data.result;
   } else {
+    // 长文本：按句子拆分后分段翻译，避免单次请求超过腾讯云限制
     const sentences = text.match(/[^。！？\.!\?\n]+[。！？\.!\?\n]+|[^。！？\.!\?\n]+$/g) || [text];
     let batches = [], cur = '';
+
+    // 将句子按 MAX_CHUNK 大小合并为批次，尽量在标点处断开，不切断句子
     for (const s of sentences) {
-      if ((cur + s).length > MAX_CHUNK && cur) { batches.push(cur.trim()); cur = s; }
-      else cur += s;
+      if ((cur + s).length > MAX_CHUNK && cur) {
+        batches.push(cur.trim());
+        cur = s;
+      } else {
+        cur += s;
+      }
     }
     if (cur.trim()) batches.push(cur.trim());
+    console.log(`📦 腾讯云翻译分为 ${batches.length} 段进行`);
+
+    // 逐段发送翻译请求
     const results = [];
     for (const batch of batches) {
       const res = await fetch(API_PROXY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: batch, target: tencentTarget, engine: 'tencent' })
+        body: JSON.stringify({
+          text: batch,              // 当前批次的文本
+          target: tencentTarget,    // 目标语言（简写）
+          engine: 'tencent'         // 使用腾讯云翻译引擎
+        })
       });
       const data = await res.json();
-      if (data.code !== 0) throw new Error(data.result || '腾讯云翻译失败');
+      if (data.code !== 0) {
+        throw new Error(data.result || '腾讯云翻译失败');
+      }
       results.push(data.result);
     }
+    // 用双换行拼接各段翻译结果，保持段落间距
     translatedText = results.join('\n\n');
   }
 
   console.log('✅ 腾讯云翻译完成');
 
+  // 调用 DeepSeek 进行排版优化，将纯文本转为带格式的 Markdown
   try {
     console.log('📝 正在用 DeepSeek 优化排版...');
     const fmtRes = await fetch(API_PROXY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: translatedText, target, engine: 'reformat' })
+      body: JSON.stringify({
+        text: translatedText,   // 翻译完成的文本
+        target: target,         // 目标语言
+        engine: 'reformat'      // 使用排版优化引擎（不翻译，只排版）
+      })
     });
     const fmtData = await fmtRes.json();
     if (fmtData.code === 0) {
       console.log('✅ 排版优化完成');
-      return fmtData.result;
+      return fmtData.result;  // 返回排版后的 Markdown 文本
     } else {
+      // 排版失败时，降级使用未排版的翻译结果
+      console.warn('排版优化失败，将使用未排版的翻译结果');
       return translatedText;
     }
   } catch (fmtErr) {
-    console.warn('排版优化失败，使用未排版的翻译结果');
+    // 网络错误等异常时，同样降级处理
+    console.warn('排版优化请求失败，将使用未排版的翻译结果:', fmtErr.message);
     return translatedText;
   }
 }
 
   // ==================== 翻译文件 ====================
-  /**
- * 文件翻译函数
- */
-async function translateFile(f) {
-    f.status = 'extracting';
-    f.progress = 0;
-    updateFileProgress(f);
+  async function translateFile(f) {
+    f.status='extracting'; f.progress=0; updateFileProgress(f);
     try {
-        const text = await extractText(f.file, f.ext);
-        if (!text.trim()) throw new Error('文件中没有可提取的文字');
-        f.extractedText = text;
-        f.status = 'translating';
-        f.progress = 30;
-        updateFileProgress(f);
-        const translated = await callProxy(text, f.targetLang, f.fmt);
-        f.translatedText = translated;
-        f.progress = 80;
-        updateFileProgress(f);
-        let blob, filename;
-        if (f.fmt === 'bilingual-vertical' || f.fmt === 'bilingual-horizontal') {
-            const layout = f.fmt === 'bilingual-horizontal' ? 'bilingual-horizontal' : 'bilingual-vertical';
-            const result = await genPDF(translated, f.name, layout);
-            blob = result.blob;
-            filename = result.filename;
-        } else if (f.fmt === 'docx') {
-            const result = await genDOCX(translated, f.name);
-            blob = result.blob;
-            filename = result.filename;
-        } else if (f.fmt === 'txt') {
-            const result = genTXT(translated, f.name);
-            blob = result.blob;
-            filename = result.filename;
-        } else if (f.fmt === 'html') {
-            const result = genHTML(translated, f.name);
-            blob = result.blob;
-            filename = result.filename;
-        } else {
-            const result = await genPDF(translated, f.name, 'full');
-            blob = result.blob;
-            filename = result.filename;
-        }
-        f.blobUrl = URL.createObjectURL(blob);
-        f.filename = filename;
-        f.status = 'done';
-        state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
-        state.completed.push(f);
-        addRecord(f);
-        showToast('翻译完成');
-    } catch (e) {
-        f.status = 'error';
-        showToast(`翻译失败: ${e.message}`, true);
-    }
-    renderAll();
+      const text = await extractText(f.file, f.ext);
+      if (!text.trim()) throw new Error('没有文字');
+      f.extractedText = text;
+      f.status='translating'; f.progress=30; updateFileProgress(f);
+
+      // 调用翻译代理函数，传入原文、目标语言和输出格式
+     const translated = await callProxy(text, f.targetLang, f.fmt);
+      f.translatedText = translated;
+      f.progress = 80; updateFileProgress(f);
+
+      // 根据输出格式选择不同的生成函数
+let blob, filename;
+if (f.fmt === 'bilingual-vertical' || f.fmt === 'bilingual-horizontal') {
+  // 双语对照格式：使用 genPDF 并传入 layout 参数
+  const layout = f.fmt === 'bilingual-horizontal' ? 'bilingual-horizontal' : 'bilingual-vertical';
+  const result = await genPDF(translated, f.name, layout);
+  blob = result.blob;
+  filename = result.filename;
+} else {
+  // 普通格式：直接调用 genPDF（或其他生成函数）
+  const result = await genPDF(translated, f.name, 'full');
+  blob = result.blob;
+  filename = result.filename;
 }
 
-// ==================== convertFile ====================  
-/**
+f.blobUrl = URL.createObjectURL(blob);
+f.filename = filename;
+f.status = 'done';
+      state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
+      state.completed.push(f); addRecord(f);
+      showToast('翻译完成');
+    } catch(e) { f.status='error'; showToast(`翻译失败: ${e.message}`, true); }
+    renderAll();
+  }
+
+  /**
  * 文件格式转换函数
  * 根据用户选择的输出格式，将提取的文本内容封装为对应格式的文件
  * 支持 PDF、DOCX、TXT 三种目标格式
  */
 async function convertFile(f) {
+    // 状态更新：开始提取文字
     f.status = 'extracting';
     f.progress = 0;
     renderAll();
 
     try {
+        // 从原始文件中提取纯文本内容
         const text = await extractText(f.file, f.ext);
-        if (!text.trim()) throw new Error('文件中没有可提取的文字');
-        f.extractedText = text;
-        f.progress = 50;
+        if (!text.trim()) {
+            throw new Error('文件中没有可提取的文字，请检查文件是否有效');
+        }
+        f.extractedText = text;   // 保存提取的文本
+        f.progress = 50;          // 提取完成，进度过半
         renderAll();
 
+        // 根据用户选择的输出格式，调用不同的生成函数
         let blob, filename;
         if (f.fmt === 'docx') {
+            // 生成 Word 文档
             const result = await genDOCX(text, f.name);
             blob = result.blob;
             filename = result.filename;
         } else if (f.fmt === 'txt') {
+            // 生成纯文本文件
             const result = genTXT(text, f.name);
             blob = result.blob;
             filename = result.filename;
         } else {
+            // 默认生成 PDF
             const result = await genPDF(text, f.name, 'full');
             blob = result.blob;
             filename = result.filename;
         }
 
-        f.blobUrl = URL.createObjectURL(blob);
+        // 创建下载链接并更新状态
+        f.blobUrl = URL.createObjectURL(blob);   // 生成浏览器可访问的临时 URL
         f.filename = filename;
-        f.status = 'done';
+        f.status = 'done';                       // 标记为完成状态
 
+        // 从待处理列表中移除，添加到已完成列表
         state.convertFiles = state.convertFiles.filter(x => x.id !== f.id);
         state.completed.push(f);
-        addRecord(f);
+        addRecord(f);                            // 记录用户操作日志
         showToast('转换完成');
     } catch (e) {
+        // 发生错误时标记为失败，并显示错误信息
         f.status = 'error';
         showToast(`转换失败: ${e.message}`, true);
     }
-    renderAll();
+    renderAll();  // 刷新界面
 }
 
   // ==================== 增强版 PDF 生成函数（修复双语对照 + 分页优化） ====================
 /**
  * 增强版 PDF 生成函数
  * 支持三种排版模式：
- * - 'full'：通篇翻译
- * - 'bilingual-vertical'：上下对照（原文带边框，译文正常缩进）
+ * - 'full'：通篇翻译（纯译文）
+ * - 'bilingual-vertical'：上下对照（原文块在上，译文块在下）
+ * - 'bilingual-horizontal'：左右对照（暂未实现，保留参数）
  *
- * @param {string} text - 要生成 PDF 的内容
- * @param {string} name - 文件名（不含扩展名）
+ * @param {string} text - 要生成 PDF 的文本内容
+ * @param {string} name - 输出 PDF 的文件名（不含扩展名）
  * @param {string} layout - 排版模式，默认为 'full'
- * @returns {Object} { blob, filename }
+ * @returns {Object} 包含 blob（PDF 二进制数据）和 filename（完整文件名）
  */
 async function genPDF(text, name, layout = 'full') {
-  let container = null;
+  let container = null;  // 用于渲染 HTML 的隐藏容器
   try {
+    // 检查依赖库是否正确加载
     const { jsPDF } = window.jspdf;
-    if (!jsPDF || typeof html2canvas !== 'function') throw new Error('依赖库未加载');
+    if (!jsPDF || typeof html2canvas !== 'function') {
+      throw new Error('依赖库未加载，请检查 jsPDF 和 html2canvas 是否正确引入');
+    }
 
-    let htmlContent;
+    let htmlContent;  // 最终的 HTML 内容
 
-    // ---------- 双语对照模式：解析 [ORIG] 和 [TRANS] 标记 ----------
+    // ---------- 分支一：双语对照模式 ----------
     if (layout === 'bilingual-vertical' && text.includes('[ORIG]') && text.includes('[TRANS]')) {
+      // 提取原文和译文部分
       const origMatch = text.match(/\[ORIG\]([\s\S]*?)\[\/ORIG\]/);
       const transMatch = text.match(/\[TRANS\]([\s\S]*?)\[\/TRANS\]/);
       const original = origMatch ? origMatch[1].trim() : '';
       const translated = transMatch ? transMatch[1].trim() : '';
 
+      // 按段落拆分原文和译文
       const origParas = original.split(/\n\s*\n/).filter(p => p.trim());
       const transParas = translated.split(/\n\s*\n/).filter(p => p.trim());
 
+      // 逐段拼接对照格式的 HTML
       let bilingualHTML = '';
       const maxLen = Math.max(origParas.length, transParas.length);
       for (let i = 0; i < maxLen; i++) {
@@ -1094,6 +1135,7 @@ async function genPDF(text, name, layout = 'full') {
         `;
       }
 
+      // 直接使用拼接好的 HTML，跳过 Markdown 解析
       htmlContent = `<div style="font-family:'SimSun','宋体',serif; font-size:16px; line-height:1.9; color:#000; padding:18px; box-sizing:border-box;">
         <style>
           p { text-indent: 2em !important; margin-bottom: 0.5em; }
@@ -1104,26 +1146,30 @@ async function genPDF(text, name, layout = 'full') {
         ${bilingualHTML}
       </div>`;
     } else {
-      // ---------- 通篇翻译模式 ----------
+      // ---------- 分支二：通篇翻译模式 ----------
+      // 将 Markdown 转换为 HTML
       if (typeof marked !== 'undefined') {
         htmlContent = marked.parse(text || '暂无内容');
       } else {
         htmlContent = (text || '暂无内容').replace(/\n/g, '<br>');
       }
 
+      // 处理特殊标签（页眉、页脚、注解）
       htmlContent = htmlContent
         .replace(/&lt;header&gt;([\s\S]*?)&lt;\/header&gt;/g,
-          '<div class="page-header" style="font-size:12px; color:#666; border-bottom:1px solid #ccc; margin-bottom:1em;">$1</div>')
+          '<div class="page-header" style="font-size:12px; color:#666; border-bottom:1px solid #ccc; margin-bottom:1em; padding-bottom:0.5em;">$1</div>')
         .replace(/&lt;footer&gt;([\s\S]*?)&lt;\/footer&gt;/g,
-          '<div class="page-footer" style="font-size:12px; color:#666; border-top:1px solid #ccc; margin-top:1em;">$1</div>')
+          '<div class="page-footer" style="font-size:12px; color:#666; border-top:1px solid #ccc; margin-top:1em; padding-top:0.5em;">$1</div>')
         .replace(/&lt;note&gt;([\s\S]*?)&lt;\/note&gt;/g,
           '<div class="annotation" style="font-size:13px; margin-left:1em; padding:0.5em; border-left:3px solid #aaa; color:#444; background:#f9f9f9;">$1</div>');
 
+      // 为表格添加边框样式
       htmlContent = htmlContent
         .replace(/<table>/g, '<table style="border-collapse:collapse; width:100%; margin:1em 0;">')
         .replace(/<th>/g, '<th style="border:1px solid #000; padding:8px; background:#f0f0f0; font-weight:bold;">')
         .replace(/<td>/g, '<td style="border:1px solid #000; padding:8px;">');
 
+      // 包裹基础样式
       htmlContent = `<div style="font-family:'SimSun','宋体',serif; font-size:16px; line-height:1.9; color:#000; padding:18px; box-sizing:border-box;">
         <style>
           p { text-indent: 2em !important; margin-bottom: 0.5em; }
@@ -1136,40 +1182,61 @@ async function genPDF(text, name, layout = 'full') {
       </div>`;
     }
 
-    const mmToPx = 3.779528;
-    const marginMm = 12;
-    const usableW = 210 - marginMm * 2, usableH = 297 - marginMm * 2;
-    const cssW = Math.floor(usableW * mmToPx), cssPageH = Math.floor(usableH * mmToPx);
+    // ---------- 页面尺寸计算 ----------
+    const mmToPx = 3.779528;            // 毫米转像素的换算比例
+    const marginMm = 12;                 // 页面边距 12mm
+    const usableW = 210 - marginMm * 2;  // A4 纸可用宽度 186mm
+    const usableH = 297 - marginMm * 2;  // A4 纸可用高度 273mm
+    const cssW = Math.floor(usableW * mmToPx);     // 转换为像素宽度
+    const cssPageH = Math.floor(usableH * mmToPx); // 转换为像素高度
 
+    // ---------- 创建隐藏容器并渲染 HTML ----------
     container = document.createElement('div');
     container.style.cssText = `position:absolute;left:-9999px;top:0;width:${cssW}px;height:${cssPageH}px;overflow:hidden;background:#fff;`;
     container.innerHTML = htmlContent;
     document.body.appendChild(container);
 
+    // 等待浏览器完成布局渲染
     await new Promise(r => requestAnimationFrame(r));
     await new Promise(r => requestAnimationFrame(r));
-    const totalH = container.scrollHeight;
+    const totalH = container.scrollHeight;  // 获取内容总高度
 
+    // ---------- 分页截图生成 PDF ----------
     const doc = new jsPDF('p', 'mm', 'a4');
     let pageCount = 0, scroll = 0;
-    const overlap = 20;
+    const overlap = 20;  // 每页重叠 20 像素，防止文字在页面边界被拦腰截断
 
     while (scroll < totalH) {
-      container.scrollTop = scroll;
+      container.scrollTop = scroll;  // 滚动容器到当前截图位置
       await new Promise(r => requestAnimationFrame(r));
-      const canvas = await html2canvas(container, { scale: 2, useCORS: true, allowTaint: true, logging: false });
-      const imgData = canvas.toDataURL('image/jpeg', 0.92);
-      if (pageCount > 0) doc.addPage();
+
+      // 使用 html2canvas 截图当前可见区域
+      const canvas = await html2canvas(container, {
+        scale: 2,          // 2 倍清晰度，保证 PDF 中文字清晰
+        useCORS: true,     // 允许跨域资源
+        allowTaint: true,
+        logging: false     // 关闭调试日志
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);  // 转为 JPEG 格式
+      if (pageCount > 0) doc.addPage();  // 非第一页时添加新页
+
+      // 计算图片在 PDF 中的高度（保持宽高比）
       const imgH = (canvas.height / (cssW * 2)) * usableW;
       doc.addImage(imgData, 'JPEG', marginMm, marginMm, usableW, imgH);
+
+      // 向下滚动，减去重叠量避免切断文字
       scroll += (cssPageH - overlap);
       pageCount++;
     }
 
+    // 清理临时容器
     if (container.parentNode) container.parentNode.removeChild(container);
     console.log(`✅ PDF 生成成功，共 ${pageCount} 页`);
     return { blob: doc.output('blob'), filename: `${name}.pdf` };
+
   } catch (err) {
+    // 错误处理：清理容器并返回错误 PDF
     if (container && container.parentNode) container.parentNode.removeChild(container);
     console.error('PDF 生成出错：', err);
     const { jsPDF } = window.jspdf;
