@@ -946,89 +946,56 @@ async function callProxy(text, target, outputFormat = 'pdf') {
   // ==================== 翻译文件 ====================
   /**
  * 文件翻译函数
- * 负责提取文本 → 调用翻译引擎 → 根据用户选择的格式生成最终文件
- *
- * @param {Object} f - 文件对象，包含文件信息、目标语言、输出格式等
  */
 async function translateFile(f) {
-    // 状态更新：开始提取文字
     f.status = 'extracting';
     f.progress = 0;
     updateFileProgress(f);
-
     try {
-        // 第一步：从原始文件中提取纯文本
         const text = await extractText(f.file, f.ext);
-        if (!text.trim()) {
-            throw new Error('文件中没有可提取的文字，请检查文件是否有效');
-        }
-        f.extractedText = text;   // 保存提取的文本内容
-
-        // 第二步：调用翻译引擎进行翻译
+        if (!text.trim()) throw new Error('文件中没有可提取的文字');
+        f.extractedText = text;
         f.status = 'translating';
         f.progress = 30;
         updateFileProgress(f);
-
-        // 传入原文、目标语言和输出格式，callProxy 会根据格式自动选择翻译引擎
         const translated = await callProxy(text, f.targetLang, f.fmt);
-        f.translatedText = translated;  // 保存翻译结果
+        f.translatedText = translated;
         f.progress = 80;
         updateFileProgress(f);
-
-        // 第三步：根据用户选择的输出格式，调用不同的文件生成函数
         let blob, filename;
-
         if (f.fmt === 'bilingual-vertical' || f.fmt === 'bilingual-horizontal') {
-            // 双语对照格式：调用 genPDF 并传入对照模式参数
             const layout = f.fmt === 'bilingual-horizontal' ? 'bilingual-horizontal' : 'bilingual-vertical';
             const result = await genPDF(translated, f.name, layout);
             blob = result.blob;
             filename = result.filename;
         } else if (f.fmt === 'docx') {
-            // Word 文档格式
             const result = await genDOCX(translated, f.name);
             blob = result.blob;
             filename = result.filename;
         } else if (f.fmt === 'txt') {
-            // 纯文本格式
             const result = genTXT(translated, f.name);
             blob = result.blob;
             filename = result.filename;
         } else if (f.fmt === 'html') {
-            // HTML 网页格式
             const result = genHTML(translated, f.name);
             blob = result.blob;
             filename = result.filename;
-        } else if (f.fmt === 'bilingual') {
-            // 旧版双语对照格式（兼容保留）
-            const result = genBilingual(text, translated, f.name);
-            blob = result.blob;
-            filename = result.filename;
         } else {
-            // 默认：PDF 通篇翻译
             const result = await genPDF(translated, f.name, 'full');
             blob = result.blob;
             filename = result.filename;
         }
-
-        // 第四步：创建下载链接并更新状态
-        f.blobUrl = URL.createObjectURL(blob);   // 生成浏览器可访问的临时链接
+        f.blobUrl = URL.createObjectURL(blob);
         f.filename = filename;
-        f.status = 'done';                       // 标记为完成状态
-
-        // 从待处理列表中移除，添加到已完成列表
+        f.status = 'done';
         state.translateFiles = state.translateFiles.filter(x => x.id !== f.id);
         state.completed.push(f);
-        addRecord(f);                            // 记录用户操作日志
+        addRecord(f);
         showToast('翻译完成');
-
     } catch (e) {
-        // 发生错误时，标记为失败并显示错误信息
         f.status = 'error';
         showToast(`翻译失败: ${e.message}`, true);
     }
-
-    // 刷新界面
     renderAll();
 }
 
