@@ -442,7 +442,7 @@
  * 负责更新三个列表的显示：
  * - 翻译待处理列表
  * - 格式转换待处理列表
- * - 已完成文档列表
+ * - 已完成文档列表（根据当前选中的标签页过滤显示）
  */
 function renderAll() {
     // 渲染翻译模块的文件列表
@@ -455,8 +455,18 @@ function renderAll() {
         .map(f => renderFileItem(f, 'convert'))
         .join('');
 
+    // 判断当前选中的是哪个标签页
+    // translateModule 的 display 不为 'none' 时，说明在翻译标签页
+    const isTranslateTab = translateModule.style.display !== 'none';
+
+    // 根据标签页过滤已完成的文档
+    // 翻译页只显示翻译完成的，转换页只显示转换完成的
+    const filteredCompleted = state.completed.filter(f => {
+        return isTranslateTab ? f.type === 'translate' : f.type === 'convert';
+    });
+
     // 渲染已完成文档列表
-    completedList.innerHTML = state.completed.map(f => {
+    completedList.innerHTML = filteredCompleted.map(f => {
         // 截取前 200 个字符用于预览
         const displayText = escapeHtml(
             (f.translatedText || f.extractedText || '').substring(0, 200)
