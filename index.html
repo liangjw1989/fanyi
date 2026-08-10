@@ -348,14 +348,33 @@
   qrZoomModal.addEventListener('click', e => { if (e.target === qrZoomModal) qrZoomModal.classList.remove('active'); });
 
   // 标签切换
-  translateTabBtn.addEventListener('click', () => {
-    translateTabBtn.classList.add('active'); convertTabBtn.classList.remove('active');
-    translateModule.style.display = 'block'; convertModule.style.display = 'none';
-  });
-  convertTabBtn.addEventListener('click', () => {
-    convertTabBtn.classList.add('active'); translateTabBtn.classList.remove('active');
-    translateModule.style.display = 'none'; convertModule.style.display = 'block';
-  });
+ * 点击"文档翻译"标签时，显示翻译模块，隐藏转换模块，并刷新已完成列表
+ */
+translateTabBtn.addEventListener('click', () => {
+    // 切换标签的激活状态样式
+    translateTabBtn.classList.add('active');
+    convertTabBtn.classList.remove('active');
+    // 显示翻译模块，隐藏转换模块
+    translateModule.style.display = 'block';
+    convertModule.style.display = 'none';
+    // 刷新已完成列表，按翻译类型过滤显示
+    renderAll();
+});
+
+/**
+ * 标签切换事件绑定
+ * 点击"格式转换"标签时，显示转换模块，隐藏翻译模块，并刷新已完成列表
+ */
+convertTabBtn.addEventListener('click', () => {
+    // 切换标签的激活状态样式
+    convertTabBtn.classList.add('active');
+    translateTabBtn.classList.remove('active');
+    // 显示转换模块，隐藏翻译模块
+    translateModule.style.display = 'none';
+    convertModule.style.display = 'block';
+    // 刷新已完成列表，按转换类型过滤显示
+    renderAll();
+});
 
   // 文件上传 (透明 input 方式，一次点击)
   translateFileInput.addEventListener('change', e => {
