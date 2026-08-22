@@ -11,8 +11,23 @@
 
   <!-- 第三方库引入（必须放在业务脚本之前） -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- 引入 pdfmake 核心库 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+<!-- 引入 pdfmake 默认字体（稍后替换为中文字体） -->
+<script src="./vfs_fonts.js"></script>
+<script>
+  // 注册中文字体映射：字体名称 hylxt 指向 vfs 中的 hylxt_bold.ttf
+  pdfMake.fonts = {
+    hylxt: {
+      normal: 'hylxt_bold.ttf',
+      bold: 'hylxt_bold.ttf',
+      italics: 'hylxt_bold.ttf',
+      bolditalics: 'hylxt_bold.ttf'
+    }
+  };
+</script>
+<!-- 引入 html-to-pdfmake 转换库 -->
+<script src="https://cdn.jsdelivr.net/npm/html-to-pdfmake@2.4.15/dist/html-to-pdfmake.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <!-- 文档解析相关库 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -1166,98 +1181,73 @@ async function checkUserQuota(mode) {
     renderAll();
   }
 
-  // ==================== PDF 生成函数 ====================
+  // ==================== genPDF 生成函数 ====================
 
   /**
-   * 生成排版精美的 PDF（基于 Markdown 渲染 + 分页截图）
-   * @param {string} text - 要生成 PDF 的内容（Markdown 格式）
-   * @param {string} name - 文件名（不含扩展名）
-   * @returns {Object} { blob, filename }
-   */
-  async function genPDF(text, name) {
-    let container = null;
-    try {
-      const { jsPDF } = window.jspdf;
-      if (!jsPDF || typeof html2canvas !== 'function') throw new Error('依赖库未加载');
-
-      // Markdown 转 HTML
-      let htmlContent;
-      if (typeof marked !== 'undefined') {
-        htmlContent = marked.parse(text || '暂无内容');
-      } else {
-        htmlContent = (text || '暂无内容').replace(/\n/g, '<br>');
-      }
-
-      // 处理页眉/页脚/注解标签
-      htmlContent = htmlContent
-        .replace(/&lt;header&gt;([\s\S]*?)&lt;\/header&gt;/g,
-          '<div class="page-header" style="font-size:12px; color:#666; border-bottom:1px solid #ccc; margin-bottom:1em; padding-bottom:0.5em;">$1</div>')
-        .replace(/&lt;footer&gt;([\s\S]*?)&lt;\/footer&gt;/g,
-          '<div class="page-footer" style="font-size:12px; color:#666; border-top:1px solid #ccc; margin-top:1em; padding-top:0.5em;">$1</div>')
-        .replace(/&lt;note&gt;([\s\S]*?)&lt;\/note&gt;/g,
-          '<div class="annotation" style="font-size:13px; margin-left:1em; padding:0.5em; border-left:3px solid #aaa; color:#444; background:#f9f9f9;">$1</div>');
-
-      // 表格加边框
-      htmlContent = htmlContent.replace(/<table>/g, '<table style="border-collapse:collapse; width:100%; margin:1em 0;">');
-      htmlContent = htmlContent.replace(/<th>/g, '<th style="border:1px solid #000; padding:8px; background:#f0f0f0; font-weight:bold;">');
-      htmlContent = htmlContent.replace(/<td>/g, '<td style="border:1px solid #000; padding:8px;">');
-
-      // 包裹基础样式
-      htmlContent = `<div style="font-family:'SimSun','宋体',serif; font-size:16px; line-height:1.9; color:#000; padding:18px; box-sizing:border-box;">
-        <style>
-          p { text-indent: 2em !important; margin-bottom: 0.5em; }
-          h1, h2, h3, h4, h5, h6 { text-indent: 0 !important; font-weight: bold; }
-          blockquote { margin: 0.5em 0; padding: 0.5em 1em; border-left: 3px solid #4f6ef7; background: #f8f9fa; color: #555; }
-          blockquote p { text-indent: 0 !important; margin-bottom: 0; }
-          hr { border: none; border-top: 1px dashed #ccc; margin: 1.5em 0; }
-        </style>
-        ${htmlContent}
-      </div>`;
-
-      // 页面尺寸
-      const mmToPx = 3.779528;
-      const marginMm = 12;
-      const usableW = 210 - marginMm * 2, usableH = 297 - marginMm * 2;
-      const cssW = Math.floor(usableW * mmToPx), cssPageH = Math.floor(usableH * mmToPx);
-
-      // 创建隐藏容器并渲染
-      container = document.createElement('div');
-      container.style.cssText = `position:absolute;left:-9999px;top:0;width:${cssW}px;height:${cssPageH}px;overflow:hidden;background:#fff;`;
-      container.innerHTML = htmlContent;
-      document.body.appendChild(container);
-
-      await new Promise(r => requestAnimationFrame(r));
-      await new Promise(r => requestAnimationFrame(r));
-      const totalH = container.scrollHeight;
-
-      // 分页截图生成 PDF
-      const doc = new jsPDF('p', 'mm', 'a4');
-      let pageCount = 0, scroll = 0;
-      const overlap = 5;
-      while (scroll < totalH) {
-        container.scrollTop = scroll;
-        await new Promise(r => requestAnimationFrame(r));
-        const canvas = await html2canvas(container, { scale: 2, useCORS: true, allowTaint: true, logging: false });
-        const imgData = canvas.toDataURL('image/jpeg', 0.92);
-        if (pageCount > 0) doc.addPage();
-        const imgH = (canvas.height / (cssW * 2)) * usableW;
-        doc.addImage(imgData, 'JPEG', marginMm, marginMm, usableW, imgH);
-        scroll += (cssPageH - overlap);
-        pageCount++;
-      }
-
-      if (container.parentNode) container.parentNode.removeChild(container);
-      console.log(`✅ PDF 共 ${pageCount} 页`);
-      return { blob: doc.output('blob'), filename: `${name}.pdf` };
-    } catch (err) {
-      if (container && container.parentNode) container.parentNode.removeChild(container);
-      console.error(err);
-      const { jsPDF } = window.jspdf;
-      const eDoc = new jsPDF();
-      eDoc.text('PDF 生成失败: ' + err.message, 10, 15);
-      return { blob: eDoc.output('blob'), filename: `${name}_error.pdf` };
+ * 生成文字型 PDF（体积小，文字可选中）
+ * 使用 Markdown → HTML → pdfmake 文档定义 → PDF 的流程
+ * @param {string} text - 翻译后的 Markdown 文本
+ * @param {string} name - 文件名（不含扩展名）
+ * @returns {Promise<{blob: Blob, filename: string}>} 生成的 PDF 二进制数据
+ */
+async function genPDF(text, name) {
+  try {
+    // 1. 将 Markdown 转换为 HTML
+    let htmlContent;
+    if (typeof marked !== 'undefined') {
+      htmlContent = marked.parse(text || '暂无内容');
+    } else {
+      htmlContent = (text || '暂无内容').replace(/\n/g, '<br>');
     }
+
+    // 2. 处理特殊标签（页眉、页脚、注释）
+    // 注意：marked 会转义 <> 为 &lt; &gt;，所以用正则匹配转义后的形式
+    htmlContent = htmlContent
+      .replace(/&lt;header&gt;([\s\S]*?)&lt;\/header&gt;/g,
+        '<div style="font-size:12px;color:#666;border-bottom:1px solid #ccc;margin-bottom:10px;">$1</div>')
+      .replace(/&lt;footer&gt;([\s\S]*?)&lt;\/footer&gt;/g,
+        '<div style="font-size:12px;color:#666;border-top:1px solid #ccc;margin-top:10px;">$1</div>')
+      .replace(/&lt;note&gt;([\s\S]*?)&lt;\/note&gt;/g,
+        '<div style="font-size:13px;margin-left:20px;padding:8px;border-left:3px solid #aaa;background:#f9f9f9;">$1</div>');
+
+    // 3. 为表格添加边框和内边距（因为 html-to-pdfmake 可能不识别内联边框样式）
+    // 可以给表格添加类，再用 CSS 样式，这里简单用属性控制
+    htmlContent = htmlContent.replace(/<table>/g, '<table border="1" style="border-collapse:collapse;width:100%;">');
+
+    // 4. 将 HTML 转换为 pdfmake 文档定义
+    const docDefinition = htmlToPdfmake(htmlContent, {
+      // 设置默认字体，需要是已在 pdfMake.fonts 中注册的字体名
+      defaultStyles: {
+        fontSize: 12,
+        lineHeight: 1.5,
+        font: 'hylxt'   // 与上面注册的字体名称一致
+      }
+    });
+
+    // 5. 生成 PDF 并触发下载
+    const pdf = pdfMake.createPdf(docDefinition);
+    return new Promise((resolve, reject) => {
+      pdf.getBlob((blob) => {
+        resolve({ blob, filename: `${name}.pdf` });
+      });
+    });
+
+  } catch (err) {
+    console.error('生成文字型 PDF 失败：', err);
+    // 降级：返回一个包含错误信息的简单 PDF
+    const errorDoc = pdfMake.createPdf({
+      content: [
+        { text: 'PDF 生成失败', style: 'header' },
+        { text: '错误信息：' + err.message }
+      ]
+    });
+    return new Promise((resolve) => {
+      errorDoc.getBlob((blob) => {
+        resolve({ blob, filename: `${name}_error.pdf` });
+      });
+    });
   }
+}
 
   // ==================== 其他格式生成函数 ====================
 
