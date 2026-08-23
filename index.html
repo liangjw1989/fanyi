@@ -16,12 +16,9 @@
 <!-- 引入 pdfmake 默认字体（稍后替换为中文字体） -->
 <script src="./vfs_fonts.js"></script>
 <script>
-  // 确保 vfs 字体数据被正确挂载到 pdfMake
   if (typeof vfs !== 'undefined' && typeof pdfMake !== 'undefined') {
     pdfMake.vfs = vfs;
   }
-
-  // 注册宋体字体（simsun.ttc 为你的字体文件名）
   pdfMake.fonts = {
     SimSun: {
       normal: 'simsun.ttc',
@@ -1188,16 +1185,13 @@ async function checkUserQuota(mode) {
   // ==================== genPDF 生成函数 ====================
 /**
  * 生成文字型 PDF（体积小，文字可选中）
- * 使用简单规则将 Markdown 转换为 pdfmake 文档定义
- * 支持标题层级、段落缩进、简单表格、页眉页脚
  * @param {string} text - 翻译后的 Markdown 文本
  * @param {string} name - 文件名（不含扩展名）
- * @param {string} mode - 翻译模式（'normal' 或 'ai'），用于调整标题样式
- * @returns {Promise<{blob: Blob, filename: string}>} 生成的 PDF 二进制数据
+ * @param {string} mode - 翻译模式（'normal' 或 'ai'）
+ * @returns {Promise<{blob: Blob, filename: string}>}
  */
 async function genPDF(text, name, mode = 'normal') {
   try {
-    // 1. 将 Markdown 文本按行拆分，逐行转换为 pdfmake 内容
     const lines = (text || '暂无内容').split('\n');
     const content = [];
     let i = 0;
@@ -1205,14 +1199,12 @@ async function genPDF(text, name, mode = 'normal') {
     while (i < lines.length) {
       let line = lines[i].trim();
 
-      // 空行：添加间距
       if (line === '') {
         content.push({ text: ' ', margin: [0, 4] });
         i++;
         continue;
       }
 
-      // 分隔线
       if (line.startsWith('---')) {
         content.push({
           canvas: [{ type: 'line', x1: 0, y1: 0, x2: 500, y2: 0, lineWidth: 1 }],
@@ -1222,7 +1214,6 @@ async function genPDF(text, name, mode = 'normal') {
         continue;
       }
 
-      // 标题检测
       if (line.startsWith('### ')) {
         content.push({ text: line.substring(4), style: 'h3' });
         i++;
@@ -1237,12 +1228,10 @@ async function genPDF(text, name, mode = 'normal') {
         continue;
       }
 
-      // 表格检测：连续多行以 | 开头且至少包含两个 |，视为表格
       if (line.startsWith('|') && line.split('|').length >= 3) {
         const tableRows = [];
         while (i < lines.length && lines[i].trim().startsWith('|')) {
           const row = lines[i].trim();
-          // 跳过分隔行（如 |---|:---|）
           if (!row.includes('---')) {
             const cells = row.split('|').filter(cell => cell.trim() !== '');
             tableRows.push(cells.map(cell => cell.trim()));
@@ -1250,7 +1239,6 @@ async function genPDF(text, name, mode = 'normal') {
           i++;
         }
         if (tableRows.length > 0) {
-          // 将表格转换为 pdfmake 表格结构
           content.push({
             table: {
               headerRows: 1,
@@ -1264,7 +1252,6 @@ async function genPDF(text, name, mode = 'normal') {
         continue;
       }
 
-      // 页眉页脚注释
       if (line.startsWith('<header>') || line.startsWith('<footer>') || line.startsWith('<note>')) {
         const cleanText = line.replace(/<[^>]+>/g, '');
         content.push({ text: cleanText, style: 'note' });
@@ -1272,46 +1259,33 @@ async function genPDF(text, name, mode = 'normal') {
         continue;
       }
 
-      // 普通段落：首行缩进两个字符，不加粗
       content.push({ text: line, style: 'paragraph' });
       i++;
     }
 
-    // 2. 文档结构定义
     const isAiMode = mode === 'ai';
     const docDefinition = {
       pageSize: 'A4',
       pageMargins: [40, 40, 40, 40],
       defaultStyle: {
-      font: 'SimSun',   // 改为宋体
-      fontSize: 12,
-      lineHeight: 1.5,
-      color: '#000',
-      bold: false
-    }
+        font: 'SimSun',
+        fontSize: 12,
+        lineHeight: 1.5,
+        color: '#000',
+        bold: false
+      },
       styles: {
         h1: { fontSize: isAiMode ? 22 : 24, bold: true, margin: [0, 14, 0, 8] },
         h2: { fontSize: isAiMode ? 19 : 20, bold: true, margin: [0, 12, 0, 6] },
         h3: { fontSize: isAiMode ? 16 : 17, bold: true, margin: [0, 10, 0, 5] },
-        paragraph: {
-          firstLineIndent: 24,
-          margin: [0, 4, 0, 4],
-          fontSize: 12,
-          bold: false           // 段落不加粗
-        },
-        note: {
-          fontSize: 10,
-          color: '#666',
-          margin: [0, 4, 0, 4],
-          bold: false
-        }
+        paragraph: { firstLineIndent: 24, margin: [0, 4, 0, 4], fontSize: 12, bold: false },
+        note: { fontSize: 10, color: '#666', margin: [0, 4, 0, 4], bold: false }
       },
       content: content
     };
 
-    // 3. 生成 PDF
     const pdf = pdfMake.createPdf(docDefinition);
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       pdf.getBlob((blob) => {
         resolve({ blob, filename: `${name}.pdf` });
       });
