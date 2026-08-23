@@ -16,7 +16,11 @@
 <!-- 引入 pdfmake 默认字体（稍后替换为中文字体） -->
 <script src="./vfs_fonts.js"></script>
 <script>
-  // 注册中文字体映射：字体名称 hylxt 指向 vfs 中的 hylxt_bold.ttf
+  // 确保 vfs 被正确挂载到 pdfMake
+  if (typeof vfs !== 'undefined' && typeof pdfMake !== 'undefined') {
+    pdfMake.vfs = vfs;
+  }
+  // 注册字体映射
   pdfMake.fonts = {
     hylxt: {
       normal: 'hylxt_bold.ttf',
