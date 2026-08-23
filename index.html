@@ -16,17 +16,18 @@
 <!-- 引入 pdfmake 默认字体（稍后替换为中文字体） -->
 <script src="./vfs_fonts.js"></script>
 <script>
-  // 确保 vfs 被正确挂载到 pdfMake
+  // 确保 vfs 字体数据被正确挂载到 pdfMake
   if (typeof vfs !== 'undefined' && typeof pdfMake !== 'undefined') {
     pdfMake.vfs = vfs;
   }
-  // 注册字体映射
+
+  // 注册宋体字体（simsun.ttc 为你的字体文件名）
   pdfMake.fonts = {
-    hylxt: {
-      normal: 'hylxt_bold.ttf',
-      bold: 'hylxt_bold.ttf',
-      italics: 'hylxt_bold.ttf',
-      bolditalics: 'hylxt_bold.ttf'
+    SimSun: {
+      normal: 'simsun.ttc',
+      bold: 'simsun.ttc',
+      italics: 'simsun.ttc',
+      bolditalics: 'simsun.ttc'
     }
   };
 </script>
@@ -1282,12 +1283,12 @@ async function genPDF(text, name, mode = 'normal') {
       pageSize: 'A4',
       pageMargins: [40, 40, 40, 40],
       defaultStyle: {
-        font: 'hylxt',          // 使用你实际配置的字体（如果已改为宋体则用宋体名称）
-        fontSize: 12,
-        lineHeight: 1.5,
-        color: '#000',
-        bold: false             // 默认不加粗
-      },
+      font: 'SimSun',   // 改为宋体
+      fontSize: 12,
+      lineHeight: 1.5,
+      color: '#000',
+      bold: false
+    }
       styles: {
         h1: { fontSize: isAiMode ? 22 : 24, bold: true, margin: [0, 14, 0, 8] },
         h2: { fontSize: isAiMode ? 19 : 20, bold: true, margin: [0, 12, 0, 6] },
@@ -1320,7 +1321,7 @@ async function genPDF(text, name, mode = 'normal') {
     console.error('生成文字型 PDF 失败：', err);
     try {
       const errorDoc = pdfMake.createPdf({
-        defaultStyle: { font: 'hylxt', fontSize: 12 },
+        defaultStyle: { font: 'SimSun', fontSize: 12 },
         content: [
           { text: 'PDF 生成失败', fontSize: 18, bold: true },
           { text: '错误信息：' + err.message }
