@@ -27,7 +27,6 @@
   };
 </script>
 <!-- 引入 html-to-pdfmake 转换库 -->
-<script src="https://cdn.jsdelivr.net/npm/html-to-pdfmake@2.4.15/dist/html-to-pdfmake.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <!-- 文档解析相关库 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -1182,49 +1181,72 @@ async function checkUserQuota(mode) {
   }
 
   // ==================== genPDF 生成函数 ====================
-
-  /**
+/**
  * 生成文字型 PDF（体积小，文字可选中）
- * 使用 Markdown → HTML → pdfmake 文档定义 → PDF 的流程
+ * 使用简单规则将 Markdown 转换为 pdfmake 文档定义
  * @param {string} text - 翻译后的 Markdown 文本
  * @param {string} name - 文件名（不含扩展名）
  * @returns {Promise<{blob: Blob, filename: string}>} 生成的 PDF 二进制数据
  */
 async function genPDF(text, name) {
   try {
-    // 1. 将 Markdown 转换为 HTML
-    let htmlContent;
-    if (typeof marked !== 'undefined') {
-      htmlContent = marked.parse(text || '暂无内容');
-    } else {
-      htmlContent = (text || '暂无内容').replace(/\n/g, '<br>');
+    // 1. 将 Markdown 文本按行拆分，简单转换为 pdfmake 内容数组
+    const lines = (text || '暂无内容').split('\n');
+    const content = [];
+
+    for (let line of lines) {
+      line = line.trim();
+      if (line === '') {
+        // 空行：添加间距
+        content.push({ text: ' ', margin: [0, 4] });
+        continue;
+      }
+
+      // 检测标题（#、##、###）
+      if (line.startsWith('### ')) {
+        content.push({ text: line.substring(4), style: 'h3' });
+      } else if (line.startsWith('## ')) {
+        content.push({ text: line.substring(3), style: 'h2' });
+      } else if (line.startsWith('# ')) {
+        content.push({ text: line.substring(2), style: 'h1' });
+      } else if (line.startsWith('---')) {
+        // 分隔线
+        content.push({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: 500, y2: 0, lineWidth: 1 }], margin: [0, 10] });
+      } else if (line.startsWith('|')) {
+        // 简单表格处理：暂不解析，直接作为普通段落显示
+        content.push({ text: line.replace(/\|/g, '  '), style: 'tableRow' });
+      } else if (line.startsWith('<header>') || line.startsWith('<footer>') || line.startsWith('<note>')) {
+        // 特殊标签：直接显示文本，去除尖括号
+        const cleanText = line.replace(/<[^>]+>/g, '');
+        content.push({ text: cleanText, style: 'note' });
+      } else {
+        // 普通段落：首行缩进两个字符
+        content.push({ text: line, style: 'paragraph' });
+      }
     }
 
-    // 2. 处理特殊标签（页眉、页脚、注释）
-    // 注意：marked 会转义 <> 为 &lt; &gt;，所以用正则匹配转义后的形式
-    htmlContent = htmlContent
-      .replace(/&lt;header&gt;([\s\S]*?)&lt;\/header&gt;/g,
-        '<div style="font-size:12px;color:#666;border-bottom:1px solid #ccc;margin-bottom:10px;">$1</div>')
-      .replace(/&lt;footer&gt;([\s\S]*?)&lt;\/footer&gt;/g,
-        '<div style="font-size:12px;color:#666;border-top:1px solid #ccc;margin-top:10px;">$1</div>')
-      .replace(/&lt;note&gt;([\s\S]*?)&lt;\/note&gt;/g,
-        '<div style="font-size:13px;margin-left:20px;padding:8px;border-left:3px solid #aaa;background:#f9f9f9;">$1</div>');
-
-    // 3. 为表格添加边框和内边距（因为 html-to-pdfmake 可能不识别内联边框样式）
-    // 可以给表格添加类，再用 CSS 样式，这里简单用属性控制
-    htmlContent = htmlContent.replace(/<table>/g, '<table border="1" style="border-collapse:collapse;width:100%;">');
-
-    // 4. 将 HTML 转换为 pdfmake 文档定义
-    const docDefinition = htmlToPdfmake(htmlContent, {
-      // 设置默认字体，需要是已在 pdfMake.fonts 中注册的字体名
-      defaultStyles: {
+    // 2. 定义文档结构
+    const docDefinition = {
+      pageSize: 'A4',
+      pageMargins: [40, 40, 40, 40],
+      defaultStyle: {
+        font: 'hylxt',          // 使用中文字体
         fontSize: 12,
         lineHeight: 1.5,
-        font: 'hylxt'   // 与上面注册的字体名称一致
-      }
-    });
+        color: '#000'
+      },
+      styles: {
+        h1: { fontSize: 22, bold: true, margin: [0, 12, 0, 6] },
+        h2: { fontSize: 18, bold: true, margin: [0, 10, 0, 5] },
+        h3: { fontSize: 15, bold: true, margin: [0, 8, 0, 4] },
+        paragraph: { firstLineIndent: 24, margin: [0, 4, 0, 4] },
+        tableRow: { fontSize: 10, margin: [0, 2, 0, 2] },
+        note: { fontSize: 10, color: '#666', margin: [0, 4, 0, 4] }
+      },
+      content: content
+    };
 
-    // 5. 生成 PDF 并触发下载
+    // 3. 生成 PDF
     const pdf = pdfMake.createPdf(docDefinition);
     return new Promise((resolve, reject) => {
       pdf.getBlob((blob) => {
@@ -1234,18 +1256,23 @@ async function genPDF(text, name) {
 
   } catch (err) {
     console.error('生成文字型 PDF 失败：', err);
-    // 降级：返回一个包含错误信息的简单 PDF
-    const errorDoc = pdfMake.createPdf({
-      content: [
-        { text: 'PDF 生成失败', style: 'header' },
-        { text: '错误信息：' + err.message }
-      ]
-    });
-    return new Promise((resolve) => {
-      errorDoc.getBlob((blob) => {
-        resolve({ blob, filename: `${name}_error.pdf` });
+    // 返回错误 PDF
+    try {
+      const errorDoc = pdfMake.createPdf({
+        defaultStyle: { font: 'hylxt', fontSize: 12 },
+        content: [
+          { text: 'PDF 生成失败', style: 'h1' },
+          { text: '错误信息：' + err.message }
+        ]
       });
-    });
+      return new Promise((resolve) => {
+        errorDoc.getBlob((blob) => {
+          resolve({ blob, filename: `${name}_error.pdf` });
+        });
+      });
+    } catch (e) {
+      return Promise.reject(err);
+    }
   }
 }
 
