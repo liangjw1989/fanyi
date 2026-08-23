@@ -1122,7 +1122,7 @@ async function checkUserQuota(mode) {
       // 在原始文件名（不含扩展名）后添加“-灵译智能翻译”后缀
       const baseName = f.name.replace(/\.[^.]+$/, ''); // 去除扩展名
       const outputName = `${baseName}-灵译-AI智能翻译`;   // 拼接后缀
-      const { blob, filename } = await genPDF(translated, outputName);
+      const { blob, filename } = await genPDF(translated, outputName, f.translateMode || 'normal');
       f.blobUrl = URL.createObjectURL(blob);
       f.filename = filename;
       f.status = 'done';
@@ -1188,64 +1188,122 @@ async function checkUserQuota(mode) {
 /**
  * 生成文字型 PDF（体积小，文字可选中）
  * 使用简单规则将 Markdown 转换为 pdfmake 文档定义
+ * 支持标题层级、段落缩进、简单表格、页眉页脚
  * @param {string} text - 翻译后的 Markdown 文本
  * @param {string} name - 文件名（不含扩展名）
+ * @param {string} mode - 翻译模式（'normal' 或 'ai'），用于调整标题样式
  * @returns {Promise<{blob: Blob, filename: string}>} 生成的 PDF 二进制数据
  */
-async function genPDF(text, name) {
+async function genPDF(text, name, mode = 'normal') {
   try {
-    // 1. 将 Markdown 文本按行拆分，简单转换为 pdfmake 内容数组
+    // 1. 将 Markdown 文本按行拆分，逐行转换为 pdfmake 内容
     const lines = (text || '暂无内容').split('\n');
     const content = [];
+    let i = 0;
 
-    for (let line of lines) {
-      line = line.trim();
+    while (i < lines.length) {
+      let line = lines[i].trim();
+
+      // 空行：添加间距
       if (line === '') {
-        // 空行：添加间距
         content.push({ text: ' ', margin: [0, 4] });
+        i++;
         continue;
       }
 
-      // 检测标题（#、##、###）
+      // 分隔线
+      if (line.startsWith('---')) {
+        content.push({
+          canvas: [{ type: 'line', x1: 0, y1: 0, x2: 500, y2: 0, lineWidth: 1 }],
+          margin: [0, 10]
+        });
+        i++;
+        continue;
+      }
+
+      // 标题检测
       if (line.startsWith('### ')) {
         content.push({ text: line.substring(4), style: 'h3' });
+        i++;
+        continue;
       } else if (line.startsWith('## ')) {
         content.push({ text: line.substring(3), style: 'h2' });
+        i++;
+        continue;
       } else if (line.startsWith('# ')) {
         content.push({ text: line.substring(2), style: 'h1' });
-      } else if (line.startsWith('---')) {
-        // 分隔线
-        content.push({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: 500, y2: 0, lineWidth: 1 }], margin: [0, 10] });
-      } else if (line.startsWith('|')) {
-        // 简单表格处理：暂不解析，直接作为普通段落显示
-        content.push({ text: line.replace(/\|/g, '  '), style: 'tableRow' });
-      } else if (line.startsWith('<header>') || line.startsWith('<footer>') || line.startsWith('<note>')) {
-        // 特殊标签：直接显示文本，去除尖括号
+        i++;
+        continue;
+      }
+
+      // 表格检测：连续多行以 | 开头且至少包含两个 |，视为表格
+      if (line.startsWith('|') && line.split('|').length >= 3) {
+        const tableRows = [];
+        while (i < lines.length && lines[i].trim().startsWith('|')) {
+          const row = lines[i].trim();
+          // 跳过分隔行（如 |---|:---|）
+          if (!row.includes('---')) {
+            const cells = row.split('|').filter(cell => cell.trim() !== '');
+            tableRows.push(cells.map(cell => cell.trim()));
+          }
+          i++;
+        }
+        if (tableRows.length > 0) {
+          // 将表格转换为 pdfmake 表格结构
+          content.push({
+            table: {
+              headerRows: 1,
+              widths: Array(tableRows[0].length).fill('*'),
+              body: tableRows
+            },
+            layout: 'lightHorizontalLines',
+            margin: [0, 8]
+          });
+        }
+        continue;
+      }
+
+      // 页眉页脚注释
+      if (line.startsWith('<header>') || line.startsWith('<footer>') || line.startsWith('<note>')) {
         const cleanText = line.replace(/<[^>]+>/g, '');
         content.push({ text: cleanText, style: 'note' });
-      } else {
-        // 普通段落：首行缩进两个字符
-        content.push({ text: line, style: 'paragraph' });
+        i++;
+        continue;
       }
+
+      // 普通段落：首行缩进两个字符，不加粗
+      content.push({ text: line, style: 'paragraph' });
+      i++;
     }
 
-    // 2. 定义文档结构
+    // 2. 文档结构定义
+    const isAiMode = mode === 'ai';
     const docDefinition = {
       pageSize: 'A4',
       pageMargins: [40, 40, 40, 40],
       defaultStyle: {
-        font: 'hylxt',          // 使用中文字体
+        font: 'hylxt',          // 使用你实际配置的字体（如果已改为宋体则用宋体名称）
         fontSize: 12,
         lineHeight: 1.5,
-        color: '#000'
+        color: '#000',
+        bold: false             // 默认不加粗
       },
       styles: {
-        h1: { fontSize: 22, bold: true, margin: [0, 12, 0, 6] },
-        h2: { fontSize: 18, bold: true, margin: [0, 10, 0, 5] },
-        h3: { fontSize: 15, bold: true, margin: [0, 8, 0, 4] },
-        paragraph: { firstLineIndent: 24, margin: [0, 4, 0, 4] },
-        tableRow: { fontSize: 10, margin: [0, 2, 0, 2] },
-        note: { fontSize: 10, color: '#666', margin: [0, 4, 0, 4] }
+        h1: { fontSize: isAiMode ? 22 : 24, bold: true, margin: [0, 14, 0, 8] },
+        h2: { fontSize: isAiMode ? 19 : 20, bold: true, margin: [0, 12, 0, 6] },
+        h3: { fontSize: isAiMode ? 16 : 17, bold: true, margin: [0, 10, 0, 5] },
+        paragraph: {
+          firstLineIndent: 24,
+          margin: [0, 4, 0, 4],
+          fontSize: 12,
+          bold: false           // 段落不加粗
+        },
+        note: {
+          fontSize: 10,
+          color: '#666',
+          margin: [0, 4, 0, 4],
+          bold: false
+        }
       },
       content: content
     };
@@ -1260,12 +1318,11 @@ async function genPDF(text, name) {
 
   } catch (err) {
     console.error('生成文字型 PDF 失败：', err);
-    // 返回错误 PDF
     try {
       const errorDoc = pdfMake.createPdf({
         defaultStyle: { font: 'hylxt', fontSize: 12 },
         content: [
-          { text: 'PDF 生成失败', style: 'h1' },
+          { text: 'PDF 生成失败', fontSize: 18, bold: true },
           { text: '错误信息：' + err.message }
         ]
       });
