@@ -10,11 +10,15 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 
   <!-- 第三方库引入（必须放在业务脚本之前） -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <!-- 引入 pdfmake 核心库 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<!-- 引入 pdfmake 核心库 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
-<!-- 引入 pdfmake 默认字体（稍后替换为中文字体） -->
+
+<!-- 引入自己的中文字体文件（务必与 index.html 同一目录或路径正确） -->
 <script src="./vfs_fonts.js"></script>
+
+<!-- 注册字体映射 -->
 <script>
   if (typeof vfs !== 'undefined' && typeof pdfMake !== 'undefined') {
     pdfMake.vfs = vfs;
