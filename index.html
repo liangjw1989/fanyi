@@ -1272,7 +1272,7 @@ async function genPDF(text, name, mode = 'normal') {
       pageSize: 'A4',
       pageMargins: [40, 40, 40, 40],
       defaultStyle: {
-  font: 'SourceHanSubset',
+  font: 'SourceHanSerifSC',
   fontSize: 12,
   lineHeight: 1.5,
   color: '#000',
@@ -1299,7 +1299,7 @@ async function genPDF(text, name, mode = 'normal') {
     console.error('生成文字型 PDF 失败：', err);
     try {
       const errorDoc = pdfMake.createPdf({
-  defaultStyle: { font: 'SourceHanSubset', fontSize: 12 },
+  defaultStyle: { font: 'SourceHanSerifSC', fontSize: 12 },
         content: [
           { text: 'PDF 生成失败', fontSize: 18, bold: true },
           { text: '错误信息：' + err.message }
