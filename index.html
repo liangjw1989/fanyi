@@ -12,10 +12,10 @@
   <!-- 第三方库引入（必须放在业务脚本之前） -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
-<!-- 引入 pdfmake 核心库 -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+<!-- 引入 pdfmake 核心库（使用较新版本，对 OTF 支持更好） -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.10/pdfmake.min.js"></script>
 
-<!-- 引入自己的中文字体文件（务必与 index.html 同一目录或路径正确） -->
+<!-- 引入自己的思源宋体字体文件（确保路径正确） -->
 <script src="./vfs_fonts.js"></script>
 
 <!-- 注册字体映射 -->
@@ -24,11 +24,11 @@
     pdfMake.vfs = vfs;
   }
   pdfMake.fonts = {
-    SimSun: {
-      normal: 'simsun.ttf',
-      bold: 'simsun.ttf',
-      italics: 'simsun.ttf',
-      bolditalics: 'simsun.ttf'
+    SourceHanSerifSC: {
+      normal: 'SourceHanSerifSC-Regular.otf',
+      bold: 'SourceHanSerifSC-Regular.otf',
+      italics: 'SourceHanSerifSC-Regular.otf',
+      bolditalics: 'SourceHanSerifSC-Regular.otf'
     }
   };
 </script>
@@ -1272,12 +1272,12 @@ async function genPDF(text, name, mode = 'normal') {
       pageSize: 'A4',
       pageMargins: [40, 40, 40, 40],
       defaultStyle: {
-        font: 'SimSun',
-        fontSize: 12,
-        lineHeight: 1.5,
-        color: '#000',
-        bold: false
-      },
+  font: 'SourceHanSubset',
+  fontSize: 12,
+  lineHeight: 1.5,
+  color: '#000',
+  bold: false
+}
       styles: {
         h1: { fontSize: isAiMode ? 22 : 24, bold: true, margin: [0, 14, 0, 8] },
         h2: { fontSize: isAiMode ? 19 : 20, bold: true, margin: [0, 12, 0, 6] },
@@ -1299,7 +1299,7 @@ async function genPDF(text, name, mode = 'normal') {
     console.error('生成文字型 PDF 失败：', err);
     try {
       const errorDoc = pdfMake.createPdf({
-        defaultStyle: { font: 'SimSun', fontSize: 12 },
+  defaultStyle: { font: 'SourceHanSubset', fontSize: 12 },
         content: [
           { text: 'PDF 生成失败', fontSize: 18, bold: true },
           { text: '错误信息：' + err.message }
