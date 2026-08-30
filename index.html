@@ -1239,29 +1239,39 @@ async function genPDF(text, name, mode = 'normal') {
 
       // 表格检测：连续以 | 开头的行
       if (line.startsWith('|') && line.split('|').length >= 3) {
-        const tableRows = [];
-        while (i < lines.length && lines[i].trim().startsWith('|')) {
-          const row = lines[i].trim();
-          // 跳过分隔行（如 |---|:---|）
-          if (!row.includes('---')) {
-            const cells = row.split('|').filter(cell => cell.trim() !== '');
-            tableRows.push(cells.map(cell => cell.trim()));
-          }
-          i++;
+    const tableRows = [];
+    while (i < lines.length && lines[i].trim().startsWith('|')) {
+        const row = lines[i].trim();
+        // 跳过分隔行（如 |---|---|）
+        if (!row.includes('---')) {
+            // 关键修改：使用 slice(1, -1) 保留所有单元格，包括空单元格
+            // 这样每行的列数保持一致，避免 undefined 单元格
+            const cells = row.split('|').slice(1, -1).map(cell => cell.trim());
+            tableRows.push(cells);
         }
-        if (tableRows.length > 0) {
-          content.push({
+        i++;
+    }
+    if (tableRows.length > 0) {
+        // 确保 widths 根据实际最大列数设置，并填充所有行到相同列数
+        const maxCols = Math.max(...tableRows.map(row => row.length));
+        const normalizedRows = tableRows.map(row => {
+            while (row.length < maxCols) {
+                row.push('');
+            }
+            return row;
+        });
+        content.push({
             table: {
-              headerRows: 1,
-              widths: Array(tableRows[0].length).fill('*'),
-              body: tableRows
+                headerRows: 1,
+                widths: Array(maxCols).fill('*'),
+                body: normalizedRows
             },
             layout: 'lightHorizontalLines',
             margin: [0, 8]
-          });
-        }
-        continue;
-      }
+        });
+    }
+    continue;
+}
 
       // 页眉/页脚/注释
       if (line.startsWith('<header>') || line.startsWith('<footer>') || line.startsWith('<note>')) {
