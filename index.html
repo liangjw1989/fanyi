@@ -25,10 +25,10 @@
   }
   pdfMake.fonts = {
     SourceHanSerifSC: {
-      normal: 'SourceHanSerifSC-Subset.ttf',
-      bold: 'SourceHanSerifSC-Subset.ttf',
-      italics: 'SourceHanSerifSC-Subset.ttf',
-      bolditalics: 'SourceHanSerifSC-Subset.ttf'
+      normal: 'SourceHanSerifSC-Extended.ttf',
+      bold: 'SourceHanSerifSC-Extended.ttf',
+      italics: 'SourceHanSerifSC-Extended.ttf',
+      bolditalics: 'SourceHanSerifSC-Extended.ttf'
     }
   };
 </script>
@@ -1188,16 +1188,14 @@ async function checkUserQuota(mode) {
 
   // ==================== genPDF 生成函数 ====================
 /**
- * 生成文字型 PDF（体积小，文字可选中）
- * 使用 pdfmake 库，支持标题、段落、表格、页眉页脚
+ * 生成文字型 PDF（优化排版：标题不换行、段落缩进、行距舒适）
  * @param {string} text - 翻译后的 Markdown 文本
  * @param {string} name - 文件名（不含扩展名）
- * @param {string} mode - 翻译模式（'normal' 或 'ai'），用于调整标题字号
+ * @param {string} mode - 翻译模式（'normal' 或 'ai'）
  * @returns {Promise<{blob: Blob, filename: string}>}
  */
 async function genPDF(text, name, mode = 'normal') {
   try {
-    // 将 Markdown 文本按行拆分，逐行转换为 pdfmake 内容
     const lines = (text || '暂无内容').split('\n');
     const content = [];
     let i = 0;
@@ -1205,7 +1203,7 @@ async function genPDF(text, name, mode = 'normal') {
     while (i < lines.length) {
       let line = lines[i].trim();
 
-      // 空行：添加间距
+      // 空行
       if (line === '') {
         content.push({ text: ' ', margin: [0, 4] });
         i++;
@@ -1222,56 +1220,67 @@ async function genPDF(text, name, mode = 'normal') {
         continue;
       }
 
-      // 标题检测
+      // 标题：单行，不换行
       if (line.startsWith('### ')) {
-        content.push({ text: line.substring(4), style: 'h3' });
+        content.push({
+          text: line.substring(4),
+          style: 'h3',
+          noWrap: true,
+          margin: [0, 10, 0, 5]
+        });
         i++;
         continue;
       } else if (line.startsWith('## ')) {
-        content.push({ text: line.substring(3), style: 'h2' });
+        content.push({
+          text: line.substring(3),
+          style: 'h2',
+          noWrap: true,
+          margin: [0, 12, 0, 6]
+        });
         i++;
         continue;
       } else if (line.startsWith('# ')) {
-        content.push({ text: line.substring(2), style: 'h1' });
+        content.push({
+          text: line.substring(2),
+          style: 'h1',
+          noWrap: true,
+          margin: [0, 14, 0, 8]
+        });
         i++;
         continue;
       }
 
-      // 表格检测：连续以 | 开头的行
+      // 表格
       if (line.startsWith('|') && line.split('|').length >= 3) {
-    const tableRows = [];
-    while (i < lines.length && lines[i].trim().startsWith('|')) {
-        const row = lines[i].trim();
-        // 跳过分隔行（如 |---|---|）
-        if (!row.includes('---')) {
-            // 关键修改：使用 slice(1, -1) 保留所有单元格，包括空单元格
-            // 这样每行的列数保持一致，避免 undefined 单元格
+        const tableRows = [];
+        while (i < lines.length && lines[i].trim().startsWith('|')) {
+          const row = lines[i].trim();
+          if (!row.includes('---')) {
             const cells = row.split('|').slice(1, -1).map(cell => cell.trim());
             tableRows.push(cells);
+          }
+          i++;
         }
-        i++;
-    }
-    if (tableRows.length > 0) {
-        // 确保 widths 根据实际最大列数设置，并填充所有行到相同列数
-        const maxCols = Math.max(...tableRows.map(row => row.length));
-        const normalizedRows = tableRows.map(row => {
+        if (tableRows.length > 0) {
+          const maxCols = Math.max(...tableRows.map(row => row.length));
+          const normalizedRows = tableRows.map(row => {
             while (row.length < maxCols) {
-                row.push('');
+              row.push('');
             }
             return row;
-        });
-        content.push({
+          });
+          content.push({
             table: {
-                headerRows: 1,
-                widths: Array(maxCols).fill('*'),
-                body: normalizedRows
+              headerRows: 1,
+              widths: Array(maxCols).fill('*'),
+              body: normalizedRows
             },
             layout: 'lightHorizontalLines',
             margin: [0, 8]
-        });
-    }
-    continue;
-}
+          });
+        }
+        continue;
+      }
 
       // 页眉/页脚/注释
       if (line.startsWith('<header>') || line.startsWith('<footer>') || line.startsWith('<note>')) {
@@ -1281,46 +1290,43 @@ async function genPDF(text, name, mode = 'normal') {
         continue;
       }
 
-      // 普通段落
-      content.push({ text: line, style: 'paragraph' });
+      // 普通段落：首行缩进
+      content.push({
+        text: line,
+        style: 'paragraph',
+        firstLineIndent: 24,
+        margin: [0, 4, 0, 4]
+      });
       i++;
     }
 
-    // 根据翻译模式调整标题字号
     const isAiMode = mode === 'ai';
-
-    // 文档结构定义
     const docDefinition = {
       pageSize: 'A4',
       pageMargins: [40, 40, 40, 40],
       defaultStyle: {
-        font: 'SourceHanSerifSC',   // 字体名称，与注册时一致
+        font: 'SourceHanSerifSC',
         fontSize: 12,
-        lineHeight: 1.5,
+        lineHeight: 1.6,
         color: '#000',
         bold: false
       },
       styles: {
-        h1: { fontSize: isAiMode ? 22 : 24, bold: true, margin: [0, 14, 0, 8] },
-        h2: { fontSize: isAiMode ? 19 : 20, bold: true, margin: [0, 12, 0, 6] },
-        h3: { fontSize: isAiMode ? 16 : 17, bold: true, margin: [0, 10, 0, 5] },
+        h1: { fontSize: isAiMode ? 22 : 24, bold: true, noWrap: true, margin: [0, 14, 0, 8] },
+        h2: { fontSize: isAiMode ? 19 : 20, bold: true, noWrap: true, margin: [0, 12, 0, 6] },
+        h3: { fontSize: isAiMode ? 16 : 17, bold: true, noWrap: true, margin: [0, 10, 0, 5] },
         paragraph: {
           firstLineIndent: 24,
           margin: [0, 4, 0, 4],
           fontSize: 12,
-          bold: false
+          bold: false,
+          lineHeight: 1.6
         },
-        note: {
-          fontSize: 10,
-          color: '#666',
-          margin: [0, 4, 0, 4],
-          bold: false
-        }
+        note: { fontSize: 10, color: '#666', margin: [0, 4, 0, 4], bold: false }
       },
       content: content
     };
 
-    // 生成 PDF
     const pdf = pdfMake.createPdf(docDefinition);
     return new Promise((resolve) => {
       pdf.getBlob((blob) => {
@@ -1330,7 +1336,6 @@ async function genPDF(text, name, mode = 'normal') {
 
   } catch (err) {
     console.error('生成文字型 PDF 失败：', err);
-    // 返回错误 PDF
     try {
       const errorDoc = pdfMake.createPdf({
         defaultStyle: { font: 'SourceHanSerifSC', fontSize: 12 },
