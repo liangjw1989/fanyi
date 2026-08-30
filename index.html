@@ -18,19 +18,6 @@
 <!-- 引入自己的思源宋体字体文件（确保路径正确） -->
 <script src="./vfs_fonts.js"></script>
 
-<!-- 注册字体映射 -->
-<script>
-  if (typeof vfs !== 'undefined' && typeof pdfMake !== 'undefined') {
-    pdfMake.vfs = vfs;
-  }
-  pdfMake.fonts = {
-    SourceHanSerifSC: {
-      normal: 'SourceHanSerifSC-Extended.ttf',
-      bold: 'SourceHanSerifSC-Extended.ttf',
-      italics: 'SourceHanSerifSC-Extended.ttf',
-      bolditalics: 'SourceHanSerifSC-Extended.ttf'
-    }
-  };
 </script>
 <!-- 引入 html-to-pdfmake 转换库 -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
