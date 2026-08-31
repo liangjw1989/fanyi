@@ -839,127 +839,304 @@ function bindEvents() {
   // ==================== 文本提取函数 ====================
 
   /**
-   * 提取文件中的文本内容
-   * 根据文件扩展名调用对应的解析函数
-   * @param {File} file - 文件对象
-   * @param {string} ext - 文件扩展名
-   * @returns {string} 提取的文本
-   */
-  async function extractText(file, ext) {
-    switch (ext) {
-      case 'pdf': return await extractPDF(file);
-      case 'docx': case 'doc': return await extractDocx(file);
-      case 'txt': return await file.text();
-      case 'png': case 'jpg': case 'jpeg': return await extractImage(file);
-      default: throw new Error('不支持的文件格式: ' + ext);
-    }
-  }
-
-  /**
-   * 提取 PDF 文件文本（增强版，支持表格识别）
-   * 通过文字坐标判断表格列，用制表符分隔，便于后续 DeepSeek 排版为表格
-   * @param {File} file - PDF 文件对象
-   * @returns {string} 提取的文本
-   */
-  async function extractPDF(file) {
+ * 提取 PDF 文本，并标记页眉页脚
+ * 原理：根据文本块的 y 坐标判断其位于页面顶部还是底部
+ * - 顶部区域（y > 页面高度 * 0.88）标记为页眉
+ * - 底部区域（y < 页面高度 * 0.12）标记为页脚
+ * @param {File} file - PDF 文件对象
+ * @returns {string} 提取后的文本
+ */
+async function extractPDF(file) {
     const buf = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
     let text = '';
 
-    // 列间距阈值：同一行内两个文本的 x 坐标差超过该值，视为新的一列
+    // 列间距阈值：同一行内两个文本的 x 坐标差超过该值，视为表格新列
     const COLUMN_GAP_THRESHOLD = 15;
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum);
-      const content = await page.getTextContent();
-      const items = content.items;
-      if (items.length === 0) continue;
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 1 });
+        const content = await page.getTextContent();
+        const items = content.items;
+        if (items.length === 0) continue;
 
-      // 按 y 坐标分组，相同 y 的视为同一行（PDF 坐标系原点在左下角）
-      const sorted = items.slice().sort((a, b) => {
-        if (Math.abs(a.transform[5] - b.transform[5]) > 5) {
-          return b.transform[5] - a.transform[5]; // y 降序
-        }
-        return a.transform[4] - b.transform[4]; // 同一行按 x 升序
-      });
-
-      let lastY = null;
-      let lineTexts = [];
-
-      // 处理一行文本：判断是否为表格行并生成对应分隔符
-      const flushLine = () => {
-        if (lineTexts.length === 0) return;
-        let isTableRow = false;
-        if (lineTexts.length >= 2) {
-          const xPositions = lineTexts.map(item => item.transform[4]);
-          for (let j = 1; j < xPositions.length; j++) {
-            if (xPositions[j] - xPositions[j - 1] > COLUMN_GAP_THRESHOLD) {
-              isTableRow = true;
-              break;
+        // 按 y 坐标分组（PDF 坐标系原点在左下角）
+        const sorted = items.slice().sort((a, b) => {
+            if (Math.abs(a.transform[5] - b.transform[5]) > 5) {
+                return b.transform[5] - a.transform[5]; // y 降序
             }
-          }
-        }
-        if (isTableRow) {
-          lineTexts.sort((a, b) => a.transform[4] - b.transform[4]);
-          let rowStr = '';
-          let prevX = null;
-          for (const item of lineTexts) {
-            if (prevX !== null && item.transform[4] - prevX > COLUMN_GAP_THRESHOLD) {
-              rowStr += '\t';
-            } else if (prevX !== null) {
-              rowStr += ' ';
+            return a.transform[4] - b.transform[4]; // 同一行按 x 升序
+        });
+
+        let lastY = null;
+        let lineTexts = [];
+
+        const flushLine = () => {
+            if (lineTexts.length === 0) return;
+
+            // 获取页面高度
+            const pageHeight = viewport.height;
+            const firstItemY = lineTexts[0].transform[5];
+            const isHeader = firstItemY > pageHeight * 0.88; // 顶部 12% 区域
+            const isFooter = firstItemY < pageHeight * 0.12; // 底部 12% 区域
+
+            let rowStr = '';
+
+            // 判断是否为表格行
+            let isTableRow = false;
+            if (lineTexts.length >= 2) {
+                const xPositions = lineTexts.map(item => item.transform[4]);
+                for (let j = 1; j < xPositions.length; j++) {
+                    if (xPositions[j] - xPositions[j - 1] > COLUMN_GAP_THRESHOLD) {
+                        isTableRow = true;
+                        break;
+                    }
+                }
             }
-            rowStr += item.str;
-            prevX = item.transform[4] + (item.width || 0);
-          }
-          text += rowStr.trim() + '\n';
-        } else {
-          text += lineTexts.map(item => item.str).join(' ') + '\n';
-        }
-        lineTexts = [];
-      };
 
-      for (const item of sorted) {
-        const currentY = item.transform[5];
-        if (lastY === null) {
-          lastY = currentY;
-        } else if (Math.abs(currentY - lastY) > 5) {
-          flushLine();
-          lastY = currentY;
-        }
-        lineTexts.push(item);
-      }
-      flushLine();
+            if (isTableRow) {
+                // 表格行：用制表符分隔列
+                lineTexts.sort((a, b) => a.transform[4] - b.transform[4]);
+                let prevX = null;
+                for (const item of lineTexts) {
+                    if (prevX !== null && item.transform[4] - prevX > COLUMN_GAP_THRESHOLD) {
+                        rowStr += '\t';
+                    } else if (prevX !== null) {
+                        rowStr += ' ';
+                    }
+                    rowStr += item.str;
+                    prevX = item.transform[4] + (item.width || 0);
+                }
+            } else {
+                // 普通文本行
+                rowStr = lineTexts.map(item => item.str).join(' ');
+            }
 
-      // 每页结束后添加分隔线，帮助 DeepSeek 识别分页
-      text += '\n---\n';
+            // 根据位置添加页眉或页脚标记
+            if (isHeader) {
+                text += '<<HEADER>>' + rowStr.trim() + '<<END_HEADER>>\n';
+            } else if (isFooter) {
+                text += '<<FOOTER>>' + rowStr.trim() + '<<END_FOOTER>>\n';
+            } else {
+                text += rowStr.trim() + '\n';
+            }
+
+            lineTexts = [];
+        };
+
+        for (const item of sorted) {
+            const currentY = item.transform[5];
+            if (lastY === null) {
+                lastY = currentY;
+            } else if (Math.abs(currentY - lastY) > 5) {
+                flushLine();
+                lastY = currentY;
+            }
+            lineTexts.push(item);
+        }
+        flushLine();
+
+        // 页面之间添加分隔线
+        text += '\n---\n';
     }
 
+    // 清理多余空行
     return text.replace(/\n{3,}/g, '\n\n').trim();
-  }
+}
 
-  /**
-   * 提取 Word 文档文本
-   * @param {File} file - Word 文件对象
-   * @returns {string} 提取的文本
-   */
-  async function extractDocx(file) {
-    const buf = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer: buf });
-    return result.value.trim();
-  }
+/**
+ * 生成文字型 PDF（优化排版：行距紧凑、段落缩进、页眉页脚定位）
+ * @param {string} text - 翻译后的 Markdown 文本（可能包含页眉页脚标记）
+ * @param {string} name - 文件名（不含扩展名）
+ * @param {string} mode - 翻译模式（'normal' 或 'ai'），用于调整标题字号
+ * @returns {Promise<{blob: Blob, filename: string}>}
+ */
+async function genPDF(text, name, mode = 'normal') {
+  try {
+    const lines = (text || '暂无内容').split('\n');
+    const content = [];
+    const headerLines = [];
+    const footerLines = [];
+    let i = 0;
 
-  /**
-   * 提取图片中的文字（OCR）
-   * @param {File} file - 图片文件对象
-   * @returns {string} 识别出的文本
-   */
-  async function extractImage(file) {
-    const worker = await Tesseract.createWorker('chi_sim+eng', 1);
-    const { data: { text } } = await worker.recognize(file);
-    await worker.terminate();
-    return text.trim();
+    while (i < lines.length) {
+      let line = lines[i].trim();
+
+      // 空行：段落间距（适当减小）
+      if (line === '') {
+        content.push({ text: '', margin: [0, 2] });
+        i++;
+        continue;
+      }
+
+      // 分隔线
+      if (line.startsWith('---')) {
+        content.push({
+          canvas: [{ type: 'line', x1: 0, y1: 0, x2: 500, y2: 0, lineWidth: 1 }],
+          margin: [0, 6]
+        });
+        i++;
+        continue;
+      }
+
+      // 页眉标记
+      if (line.startsWith('<<HEADER>>')) {
+        const headerText = line.substring(10, line.indexOf('<<END_HEADER>>')).trim();
+        if (headerText) headerLines.push(headerText);
+        i++;
+        continue;
+      }
+
+      // 页脚标记
+      if (line.startsWith('<<FOOTER>>')) {
+        const footerText = line.substring(10, line.indexOf('<<END_FOOTER>>')).trim();
+        if (footerText) footerLines.push(footerText);
+        i++;
+        continue;
+      }
+
+      // 标题检测
+      if (line.startsWith('### ')) {
+        content.push({ text: line.substring(4), style: 'h3' });
+        i++;
+        continue;
+      } else if (line.startsWith('## ')) {
+        content.push({ text: line.substring(3), style: 'h2' });
+        i++;
+        continue;
+      } else if (line.startsWith('# ')) {
+        content.push({ text: line.substring(2), style: 'h1' });
+        i++;
+        continue;
+      }
+
+      // 表格检测
+      if (line.startsWith('|') && line.split('|').length >= 3) {
+        const tableRows = [];
+        while (i < lines.length && lines[i].trim().startsWith('|')) {
+          const row = lines[i].trim();
+          if (!row.includes('---')) {
+            const cells = row.split('|').slice(1, -1).map(cell => cell.trim());
+            tableRows.push(cells);
+          }
+          i++;
+        }
+        if (tableRows.length > 0) {
+          const maxCols = Math.max(...tableRows.map(row => row.length));
+          const normalizedRows = tableRows.map(row => {
+            while (row.length < maxCols) {
+              row.push('');
+            }
+            return row;
+          });
+          content.push({
+            table: {
+              headerRows: 1,
+              widths: Array(maxCols).fill('*'),
+              body: normalizedRows
+            },
+            layout: 'lightHorizontalLines',
+            margin: [0, 6]
+          });
+        }
+        continue;
+      }
+
+      // 页眉页脚注释（旧标记，兼容）
+      if (line.startsWith('<header>') || line.startsWith('<footer>') || line.startsWith('<note>')) {
+        const cleanText = line.replace(/<[^>]+>/g, '');
+        content.push({ text: cleanText, style: 'note' });
+        i++;
+        continue;
+      }
+
+      // 普通段落：手动添加两个全角空格实现首行缩进
+      content.push({
+        text: '\u3000\u3000' + line,
+        style: 'paragraph'
+      });
+      i++;
+    }
+
+    const isAiMode = mode === 'ai';
+
+    // 文档结构定义
+    const docDefinition = {
+      pageSize: 'A4',
+      pageMargins: [40, 40, 40, 40],
+      defaultStyle: {
+        font: 'SourceHanSerifSC',
+        fontSize: 12,
+        lineHeight: 1.4,        // 行距更紧凑
+        color: '#000',
+        bold: false
+      },
+      styles: {
+        h1: { fontSize: isAiMode ? 22 : 24, bold: true, margin: [0, 10, 0, 6], lineHeight: 1.3 },
+        h2: { fontSize: isAiMode ? 19 : 20, bold: true, margin: [0, 8, 0, 5], lineHeight: 1.3 },
+        h3: { fontSize: isAiMode ? 16 : 17, bold: true, margin: [0, 6, 0, 4], lineHeight: 1.3 },
+        paragraph: {
+          margin: [0, 1, 0, 1],   // 段间距减小
+          fontSize: 12,
+          bold: false,
+          lineHeight: 1.4,
+          alignment: 'justify'
+        },
+        note: { fontSize: 10, color: '#666', margin: [0, 2, 0, 2], bold: false }
+      },
+      content: content,
+      // 页眉：如果有页眉文本，放在页面顶部居中
+      header: (currentPage, pageCount) => {
+        if (headerLines.length === 0) return null;
+        return {
+          text: headerLines[0],  // 使用第一个页眉作为代表
+          fontSize: 9,
+          color: '#666',
+          alignment: 'center',
+          margin: [40, 20, 40, 0]
+        };
+      },
+      // 页脚：如果有页脚文本，放在页面底部居中，并添加页码
+      footer: (currentPage, pageCount) => {
+        const footerText = footerLines.length > 0 ? footerLines[0] + '    ' : '';
+        return {
+          text: footerText + '页码 ' + currentPage + ' / ' + pageCount,
+          fontSize: 9,
+          color: '#666',
+          alignment: 'center',
+          margin: [40, 0, 40, 20]
+        };
+      }
+    };
+
+    const pdf = pdfMake.createPdf(docDefinition);
+    return new Promise((resolve) => {
+      pdf.getBlob((blob) => {
+        resolve({ blob, filename: `${name}.pdf` });
+      });
+    });
+
+  } catch (err) {
+    console.error('生成文字型 PDF 失败：', err);
+    try {
+      const errorDoc = pdfMake.createPdf({
+        defaultStyle: { font: 'SourceHanSerifSC', fontSize: 12 },
+        content: [
+          { text: 'PDF 生成失败', fontSize: 18, bold: true },
+          { text: '错误信息：' + err.message }
+        ]
+      });
+      return new Promise((resolve) => {
+        errorDoc.getBlob((blob) => {
+          resolve({ blob, filename: `${name}_error.pdf` });
+        });
+      });
+    } catch (e) {
+      return Promise.reject(err);
+    }
   }
+}
 
   // ====================callProxy 翻译代理函数 ====================
 
@@ -1175,24 +1352,26 @@ async function checkUserQuota(mode) {
 
   // ==================== genPDF 生成函数 ====================
 /**
- * 生成文字型 PDF（优化排版：标题智能换行、段落首行缩进、段间距适中）
- * @param {string} text - 翻译后的 Markdown 文本
+ * 生成文字型 PDF（优化排版：行距紧凑、段落缩进、页眉页脚定位）
+ * @param {string} text - 翻译后的 Markdown 文本（可能包含页眉页脚标记）
  * @param {string} name - 文件名（不含扩展名）
- * @param {string} mode - 翻译模式（'normal' 或 'ai'）
+ * @param {string} mode - 翻译模式（'normal' 或 'ai'），用于调整标题字号
  * @returns {Promise<{blob: Blob, filename: string}>}
  */
 async function genPDF(text, name, mode = 'normal') {
   try {
     const lines = (text || '暂无内容').split('\n');
     const content = [];
+    const headerLines = [];
+    const footerLines = [];
     let i = 0;
 
     while (i < lines.length) {
       let line = lines[i].trim();
 
-      // 空行：段落间距，使用较小间距
+      // 空行：段落间距（适当减小）
       if (line === '') {
-        content.push({ text: '', margin: [0, 3] });
+        content.push({ text: '', margin: [0, 2] });
         i++;
         continue;
       }
@@ -1207,7 +1386,23 @@ async function genPDF(text, name, mode = 'normal') {
         continue;
       }
 
-      // 标题检测（允许换行，不截断）
+      // 页眉标记
+      if (line.startsWith('<<HEADER>>')) {
+        const headerText = line.substring(10, line.indexOf('<<END_HEADER>>')).trim();
+        if (headerText) headerLines.push(headerText);
+        i++;
+        continue;
+      }
+
+      // 页脚标记
+      if (line.startsWith('<<FOOTER>>')) {
+        const footerText = line.substring(10, line.indexOf('<<END_FOOTER>>')).trim();
+        if (footerText) footerLines.push(footerText);
+        i++;
+        continue;
+      }
+
+      // 标题检测
       if (line.startsWith('### ')) {
         content.push({ text: line.substring(4), style: 'h3' });
         i++;
@@ -1254,7 +1449,7 @@ async function genPDF(text, name, mode = 'normal') {
         continue;
       }
 
-      // 页眉/页脚/注释
+      // 页眉页脚注释（旧标记，兼容）
       if (line.startsWith('<header>') || line.startsWith('<footer>') || line.startsWith('<note>')) {
         const cleanText = line.replace(/<[^>]+>/g, '');
         content.push({ text: cleanText, style: 'note' });
@@ -1262,62 +1457,63 @@ async function genPDF(text, name, mode = 'normal') {
         continue;
       }
 
-      // 普通段落：使用 textIndent 实现首行缩进
+      // 普通段落：手动添加两个全角空格实现首行缩进
       content.push({
-        text: line,
+        text: '\u3000\u3000' + line,
         style: 'paragraph'
       });
       i++;
     }
 
     const isAiMode = mode === 'ai';
+
+    // 文档结构定义
     const docDefinition = {
       pageSize: 'A4',
       pageMargins: [40, 40, 40, 40],
       defaultStyle: {
         font: 'SourceHanSerifSC',
         fontSize: 12,
-        lineHeight: 1.6,
+        lineHeight: 1.4,        // 行距更紧凑
         color: '#000',
         bold: false
       },
       styles: {
-        h1: {
-          fontSize: isAiMode ? 22 : 24,
-          bold: true,
-          margin: [0, 10, 0, 6],
-          lineHeight: 1.3,
-          preserveLeadingSpaces: false
-        },
-        h2: {
-          fontSize: isAiMode ? 19 : 20,
-          bold: true,
-          margin: [0, 8, 0, 5],
-          lineHeight: 1.3
-        },
-        h3: {
-          fontSize: isAiMode ? 16 : 17,
-          bold: true,
-          margin: [0, 6, 0, 4],
-          lineHeight: 1.3
-        },
+        h1: { fontSize: isAiMode ? 22 : 24, bold: true, margin: [0, 10, 0, 6], lineHeight: 1.3 },
+        h2: { fontSize: isAiMode ? 19 : 20, bold: true, margin: [0, 8, 0, 5], lineHeight: 1.3 },
+        h3: { fontSize: isAiMode ? 16 : 17, bold: true, margin: [0, 6, 0, 4], lineHeight: 1.3 },
         paragraph: {
-          // 使用 textIndent 实现首行缩进两字符
-          textIndent: 24,
-          margin: [0, 2, 0, 2],
+          margin: [0, 1, 0, 1],   // 段间距减小
           fontSize: 12,
           bold: false,
-          lineHeight: 1.6,
+          lineHeight: 1.4,
           alignment: 'justify'
         },
-        note: {
-          fontSize: 10,
-          color: '#666',
-          margin: [0, 2, 0, 2],
-          bold: false
-        }
+        note: { fontSize: 10, color: '#666', margin: [0, 2, 0, 2], bold: false }
       },
-      content: content
+      content: content,
+      // 页眉：如果有页眉文本，放在页面顶部居中
+      header: (currentPage, pageCount) => {
+        if (headerLines.length === 0) return null;
+        return {
+          text: headerLines[0],  // 使用第一个页眉作为代表
+          fontSize: 9,
+          color: '#666',
+          alignment: 'center',
+          margin: [40, 20, 40, 0]
+        };
+      },
+      // 页脚：如果有页脚文本，放在页面底部居中，并添加页码
+      footer: (currentPage, pageCount) => {
+        const footerText = footerLines.length > 0 ? footerLines[0] + '    ' : '';
+        return {
+          text: footerText + '页码 ' + currentPage + ' / ' + pageCount,
+          fontSize: 9,
+          color: '#666',
+          alignment: 'center',
+          margin: [40, 0, 40, 20]
+        };
+      }
     };
 
     const pdf = pdfMake.createPdf(docDefinition);
