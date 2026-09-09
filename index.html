@@ -1204,7 +1204,9 @@ async function genPDF(text, name, mode = 'normal') {
     let i = 0;
 
     while (i < lines.length) {
-      let line = lines[i].trim();
+     let line = lines[i].trim();
+// 去掉 Markdown 加粗标记 **
+line = line.replace(/\*\*/g, '');
 
       // 空行：段落间距（适当减小）
       if (line === '') {
