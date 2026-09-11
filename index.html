@@ -154,22 +154,66 @@
     .btn-danger { background:#ef4444; color:white; }
     .btn-sm { padding:0.3rem 0.8rem; font-size:0.75rem; }
 
-    /* 标签页 */
-    .tabs { display:flex; gap:0.5rem; margin-bottom:1.5rem; flex-wrap:wrap; }
-    .tab-btn { background:white; border:1.5px solid var(--border); color:#64748b; padding:0.6rem 1.5rem; border-radius:2rem; font-weight:600; cursor:pointer; transition:0.2s; font-size:0.9rem; }
-    .tab-btn.active { background:var(--gradient-1); color:white; border-color:transparent; box-shadow:0 4px 15px rgba(79,110,247,0.3); }
+    /* ========== 标签页（优化版，类似分段控制器） ========== */
+.tabs { 
+  display: flex; 
+  gap: 0.3rem; 
+  margin-bottom: 1.5rem; 
+  background: #e2e8f0; 
+  padding: 0.3rem; 
+  border-radius: 2rem; 
+  width: fit-content; 
+}
+.tab-btn { 
+  border: none; 
+  background: transparent; 
+  color: #64748b; 
+  padding: 0.6rem 1.8rem; 
+  border-radius: 1.8rem; 
+  font-weight: 600; 
+  cursor: pointer; 
+  transition: all 0.3s ease; 
+  font-size: 0.9rem; 
+}
+.tab-btn.active { 
+  background: white; 
+  color: var(--primary); 
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+}
 
-    /* 上传区域 */
-    .upload-area {
-      border:2px dashed #cbd5e1; border-radius:1.5rem; padding:2.5rem 2rem;
-      text-align:center; cursor:pointer; background:rgba(248,250,252,0.7);
-      margin:1rem 0; transition:0.2s; position:relative;
-    }
-    .upload-area:hover { border-color:var(--primary); background:var(--primary-light); }
-    .upload-area.drag-over { border-color:var(--primary); background:#eef2ff; transform:scale(1.02); }
-    .upload-area i { font-size:2.5rem; color:var(--primary); margin-bottom:0.5rem; display:block; }
-    .upload-title { font-weight:600; font-size:1rem; margin-bottom:0.3rem; }
-    .upload-hint { font-size:0.8rem; color:var(--text-secondary); }
+    /* ========== 上传区域（缩小版） ========== */
+.upload-area {
+  border: 2px dashed #cbd5e1; 
+  border-radius: 1rem;        /* 圆角适当变小 */
+  padding: 1.2rem 1rem;       /* 原来是 2.5rem 2rem，大幅缩小 */
+  text-align: center; 
+  cursor: pointer; 
+  background: rgba(248,250,252,0.7);
+  margin: 0.8rem 0; 
+  transition: 0.2s; 
+  position: relative;
+}
+.upload-area:hover { border-color: var(--primary); background: var(--primary-light); }
+.upload-area.drag-over { border-color: var(--primary); background: #eef2ff; transform: scale(1.01); }
+.upload-area i { font-size: 1.8rem; color: var(--primary); margin-bottom: 0.3rem; display: block; }
+.upload-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.2rem; }
+.upload-hint { font-size: 0.75rem; color: var(--text-secondary); }
+
+/* 文件序号徽章 */
+.file-index {
+  background: var(--gradient-1);
+  color: white;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  flex-shrink: 0;
+  margin-right: 0.2rem;
+}
 
     /* 文件列表项 */
     .file-item {
@@ -636,8 +680,8 @@
    */
   function renderAll() {
     // 渲染翻译和转换待处理列表
-    translateFileList.innerHTML = state.translateFiles.map(f => renderFileItem(f, 'translate')).join('');
-    convertFileList.innerHTML = state.convertFiles.map(f => renderFileItem(f, 'convert')).join('');
+    translateFileList.innerHTML = state.translateFiles.map((f, index) => renderFileItem(f, 'translate', index)).join('');
+    convertFileList.innerHTML = state.convertFiles.map((f, index) => renderFileItem(f, 'convert', index)).join('');
 
     // 判断当前标签页，决定已完成列表显示哪些文档
     const isTranslateTab = translateModule.style.display !== 'none';
@@ -646,12 +690,13 @@
     });
 
     // 渲染已完成文档列表
-    completedList.innerHTML = filteredCompleted.map(f => {
-      const displayText = escapeHtml((f.translatedText || f.extractedText || '').substring(0, 200));
-      return `
-        <div class="file-item">
-          <i class="fas fa-check-circle" style="color:#10b981;"></i>
-          <div class="file-info">
+    completedList.innerHTML = filteredCompleted.map((f, index) => {
+    const displayText = escapeHtml((f.translatedText || f.extractedText || '').substring(0, 200));
+    return `
+      <div class="file-item">
+        <div class="file-index">${index + 1}</div>  <!-- 新增这一行 -->
+        <i class="fas fa-check-circle" style="color:#10b981;"></i>
+        <div class="file-info">
             <div class="file-name">${escapeHtml(f.name)}</div>
             <small>${f.filename}</small>
           </div>
@@ -709,6 +754,7 @@ function renderFileItem(f, type) {
     // 返回完整的文件项 HTML
     return `
       <div class="file-item" data-file-id="${f.id}">
+        <div class="file-index">${index + 1}</div>  <!-- 新增这一行 -->
         <i class="fas fa-file file-icon"></i>
         <div class="file-info">
           <div class="file-name">${escapeHtml(f.name)}</div>
