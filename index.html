@@ -321,6 +321,64 @@
   <div class="footer-hint">🔐 登录后使用完整功能 · 扫码可在手机打开</div>
 </div>
 
+/* ========== 列表自动编号 ========== */
+/* 给翻译待处理列表设置编号计数器 */
+#translateFileList { counter-reset: translateCounter; }
+#translateFileList .file-item { counter-increment: translateCounter; position: relative; }
+#translateFileList .file-item::before {
+  content: counter(translateCounter);
+  background: var(--gradient-1);
+  color: white;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  flex-shrink: 0;
+  margin-right: 0.5rem;
+}
+
+/* 给格式转换待处理列表设置编号计数器 */
+#convertFileList { counter-reset: convertCounter; }
+#convertFileList .file-item { counter-increment: convertCounter; position: relative; }
+#convertFileList .file-item::before {
+  content: counter(convertCounter);
+  background: var(--gradient-1);
+  color: white;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  flex-shrink: 0;
+  margin-right: 0.5rem;
+}
+
+/* 给已完成文档列表设置编号计数器 */
+#completedList { counter-reset: completedCounter; }
+#completedList .file-item { counter-increment: completedCounter; position: relative; }
+#completedList .file-item::before {
+  content: counter(completedCounter);
+  background: var(--gradient-1);
+  color: white;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  flex-shrink: 0;
+  margin-right: 0.5rem;
+}
+
 <!-- 二维码放大模态框 -->
 <div class="modal" id="qrZoomModal">
   <div class="modal-content" style="max-width:350px;">
@@ -680,8 +738,8 @@
    */
   function renderAll() {
     // 渲染翻译和转换待处理列表
-    translateFileList.innerHTML = state.translateFiles.map((f, index) => renderFileItem(f, 'translate', index)).join('');
-    convertFileList.innerHTML = state.convertFiles.map((f, index) => renderFileItem(f, 'convert', index)).join('');
+    translateFileList.innerHTML = state.translateFiles.map(f => renderFileItem(f, 'translate')).join('');
+convertFileList.innerHTML = state.convertFiles.map(f => renderFileItem(f, 'convert')).join('');
 
     // 判断当前标签页，决定已完成列表显示哪些文档
     const isTranslateTab = translateModule.style.display !== 'none';
@@ -690,11 +748,10 @@
     });
 
     // 渲染已完成文档列表
-    completedList.innerHTML = filteredCompleted.map((f, index) => {
+    completedList.innerHTML = filteredCompleted.map(f => {
     const displayText = escapeHtml((f.translatedText || f.extractedText || '').substring(0, 200));
     return `
-      <div class="file-item">
-        <div class="file-index">${index + 1}</div>  <!-- 新增这一行 -->
+      <div class="file-item">     
         <i class="fas fa-check-circle" style="color:#10b981;"></i>
         <div class="file-info">
             <div class="file-name">${escapeHtml(f.name)}</div>
@@ -753,16 +810,15 @@ function renderFileItem(f, type) {
 
     // 返回完整的文件项 HTML
     return `
-      <div class="file-item" data-file-id="${f.id}">
-        <div class="file-index">${index + 1}</div>  <!-- 新增这一行 -->
-        <i class="fas fa-file file-icon"></i>
-        <div class="file-info">
-          <div class="file-name">${escapeHtml(f.name)}</div>
-          <div class="progress-bar"><div class="progress-fill" style="width:${f.progress}%"></div></div>
-          <small>${f.status}</small>
-        </div>
-        <div class="file-actions">${langSelect}${modeSelect}${actionBtn}${deleteBtn}</div>
-      </div>`;
+  <div class="file-item" data-file-id="${f.id}">
+    <i class="fas fa-file file-icon"></i>
+    <div class="file-info">
+      <div class="file-name">${escapeHtml(f.name)}</div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${f.progress}%"></div></div>
+      <small>${f.status}</small>
+    </div>
+    <div class="file-actions">${langSelect}${modeSelect}${actionBtn}${deleteBtn}</div>
+  </div>`;
 }
 
   /**
