@@ -982,22 +982,21 @@ async function extractPDF(file) {
     const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
     let text = '';
 
-    // 列间距阈值：同一行内两个文本的 x 坐标差超过该值，视为表格新列
-    const COLUMN_GAP_THRESHOLD = 3;   // 降低阈值，让相邻列更易区分
+    const COLUMN_GAP_THRESHOLD = 5; // 表格列间距阈值
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
         const viewport = page.getViewport({ scale: 1 });
+        const pageHeight = viewport.height;
         const content = await page.getTextContent();
         const items = content.items;
         if (items.length === 0) continue;
 
-        // 按 y 坐标分组（PDF 坐标系原点在左下角）
         const sorted = items.slice().sort((a, b) => {
             if (Math.abs(a.transform[5] - b.transform[5]) > 5) {
-                return b.transform[5] - a.transform[5]; // y 降序
+                return b.transform[5] - a.transform[5];
             }
-            return a.transform[4] - b.transform[4]; // 同一行按 x 升序
+            return a.transform[4] - b.transform[4];
         });
 
         let lastY = null;
@@ -1006,15 +1005,11 @@ async function extractPDF(file) {
         const flushLine = () => {
             if (lineTexts.length === 0) return;
 
-            // 获取页面高度
-            const pageHeight = viewport.height;
             const firstItemY = lineTexts[0].transform[5];
-            const isHeader = firstItemY > pageHeight * 0.88; // 顶部 12% 区域
-            const isFooter = firstItemY < pageHeight * 0.12; // 底部 12% 区域
+            const isHeader = firstItemY > pageHeight * 0.88; // 顶部12%
+            const isFooter = firstItemY < pageHeight * 0.12; // 底部12%
 
             let rowStr = '';
-
-            // 判断是否为表格行
             let isTableRow = false;
             if (lineTexts.length >= 2) {
                 const xPositions = lineTexts.map(item => item.transform[4]);
@@ -1027,7 +1022,6 @@ async function extractPDF(file) {
             }
 
             if (isTableRow) {
-                // 表格行：用制表符分隔列
                 lineTexts.sort((a, b) => a.transform[4] - b.transform[4]);
                 let prevX = null;
                 for (const item of lineTexts) {
@@ -1040,20 +1034,23 @@ async function extractPDF(file) {
                     prevX = item.transform[4] + (item.width || 0);
                 }
             } else {
-                // 普通文本行
                 rowStr = lineTexts.map(item => item.str).join(' ');
             }
 
-            // 添加标记
-   if (isHeader || isFooter) {
-    // 直接丢弃页眉页脚，不添加到正文，避免排版混乱
-    lineTexts = [];
-    return;
-} else if (isTableRow) {
-    text += rowStr.trim() + '\n';
-} else {
-    text += colTag + rowStr.trim() + '\n';
-}
+            // 【核心】检测到页眉页脚，直接丢弃，不加入正文
+            if (isHeader || isFooter) {
+                lineTexts = [];
+                return;
+            }
+
+            if (isTableRow) {
+                text += rowStr.trim() + '\n';
+            } else {
+                text += rowStr.trim() + '\n';
+            }
+
+            lineTexts = [];
+        };
 
         for (const item of sorted) {
             const currentY = item.transform[5];
@@ -1066,12 +1063,9 @@ async function extractPDF(file) {
             lineTexts.push(item);
         }
         flushLine();
-
-        // 页面之间添加分隔线
         text += '\n---\n';
     }
 
-    // 清理多余空行
     return text.replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -1306,48 +1300,47 @@ async function checkUserQuota(mode) {
 
   // ==================== genPDF 生成函数 ====================
 /**
- * 生成文字型 PDF（优化排版：行距紧凑、段落缩进、表格列保留、页眉页脚定位）
- * @param {string} text - 翻译后的 Markdown 文本（可能包含页眉页脚标记）
+ * 生成文字型 PDF（优化排版：行距紧凑、段落缩进、表格列保留、去除页眉页脚乱码）
+ * @param {string} text - 翻译后的 Markdown 文本
  * @param {string} name - 文件名（不含扩展名）
- * @param {string} mode - 翻译模式（'normal' 或 'ai'），用于调整标题字号
+ * @param {string} mode - 翻译模式（'normal' 或 'ai'）
  * @returns {Promise<{blob: Blob, filename: string}>}
  */
 async function genPDF(text, name, mode = 'normal') {
   try {
     const lines = (text || '暂无内容').split('\n');
     const content = [];
-    const headerLines = [];
-    const footerLines = [];
     let i = 0;
 
     while (i < lines.length) {
-     let line = lines[i].trim();
-     // 【新增】处理特殊数学符号，防止显示为方框
-line = line.replace(/×/g, 'x'); // 乘号统一换成小写 x
-line = line.replace(/−/g, '-'); // 特殊减号换成普通横杠
-line = line.replace(/⁻/g, '-'); // 上标负号换普通横杠
-line = line.replace(/☒/g, ''); // 无法识别的乱码直接删掉
-// 把上标数字替换为普通数字，保证能显示
-line = line.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, function(match) {
-    return {'⁰':'0', '¹':'1', '²':'2', '³':'3', '⁴':'4', '⁵':'5', '⁶':'6', '⁷':'7', '⁸':'8', '⁹':'9'}[match];
-});
-     line = line.replace(/\*\*/g, '');// 去掉加粗标记
-    // ================== 过滤页眉页脚乱码 ==================
-// 针对 MDPI / Frontiers 等期刊常见的乱码内容进行拦截
-if (
-  line.includes('Frontiers in') || 
-  line.includes('frontiersin.org') ||
-  line.includes('doi:') ||
-  line.includes('https://') ||
-  line.includes('MDPI') ||
-  line.includes('Basel') ||
-  line.match(/^[A-Za-z\s]+\d+\s*\|\s*[A-Za-z]+/) // 匹配类似 "Frontiers in Endocrinology 04"
-) {
-  i++; // 跳过这一行，不放入 PDF
-  continue;
-}
-// ======================================================
-      // 空行：段落间距（适当减小）
+      let line = lines[i].trim();
+
+      // ================== 1. 特殊符号与加粗处理 ==================
+      line = line.replace(/\*\*/g, '');  // 去掉 Markdown 加粗标记
+      line = line.replace(/×/g, 'x');     // 乘号统一换成小写 x
+      line = line.replace(/−/g, '-');     // 特殊减号换成普通横杠
+      line = line.replace(/⁻/g, '-');     // 上标负号换普通横杠
+      line = line.replace(/☒/g, '');      // 无法识别的乱码直接删掉
+      // 把上标数字替换为普通数字，保证能显示
+      line = line.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, function(match) {
+          return {'⁰':'0', '¹':'1', '²':'2', '³':'3', '⁴':'4', '⁵':'5', '⁶':'6', '⁷':'7', '⁸':'8', '⁹':'9'}[match];
+      });
+
+      // ================== 2. 过滤页眉页脚乱码 ==================
+      if (
+        line.includes('Frontiers in') || 
+        line.includes('frontiersin.org') ||
+        line.includes('doi:') ||
+        line.includes('https://') ||
+        line.includes('MDPI') ||
+        line.includes('Basel') ||
+        line.match(/^[A-Za-z\s]+\d+\s*\|\s*[A-Za-z]+/) // 匹配类似 "Frontiers in Endocrinology 04"
+      ) {
+        i++; // 跳过这一行，不放入 PDF
+        continue;
+      }
+
+      // 空行
       if (line === '') {
         content.push({ text: '', margin: [0, 2] });
         i++;
@@ -1364,18 +1357,8 @@ if (
         continue;
       }
 
-      // 页眉标记
-      if (line.startsWith('<<HEADER>>')) {
-        const headerText = line.substring(10, line.indexOf('<<END_HEADER>>')).trim();
-        if (headerText) headerLines.push(headerText);
-        i++;
-        continue;
-      }
-
-      // 页脚标记
-      if (line.startsWith('<<FOOTER>>')) {
-        const footerText = line.substring(10, line.indexOf('<<END_FOOTER>>')).trim();
-        if (footerText) footerLines.push(footerText);
+      // 旧版页眉页脚标记（直接丢弃，不再放入正文）
+      if (line.startsWith('<<HEADER>>') || line.startsWith('<<FOOTER>>')) {
         i++;
         continue;
       }
@@ -1383,19 +1366,16 @@ if (
       // 标题检测
       if (line.startsWith('### ')) {
         content.push({ text: line.substring(4), style: 'h3' });
-        i++;
-        continue;
+        i++; continue;
       } else if (line.startsWith('## ')) {
         content.push({ text: line.substring(3), style: 'h2' });
-        i++;
-        continue;
+        i++; continue;
       } else if (line.startsWith('# ')) {
         content.push({ text: line.substring(2), style: 'h1' });
-        i++;
-        continue;
+        i++; continue;
       }
 
-      // 表格检测
+      // ================== 3. 表格检测与渲染 ==================
       if (line.startsWith('|') && line.split('|').length >= 3) {
         const tableRows = [];
         while (i < lines.length && lines[i].trim().startsWith('|')) {
@@ -1406,57 +1386,45 @@ if (
           }
           i++;
         }
+        
         if (tableRows.length > 0) {
-  const maxCols = Math.max(...tableRows.map(row => row.length));
-  const normalizedRows = tableRows.map(row => {
-    while (row.length < maxCols) {
-      row.push('');
-    }
-    return row;
-  });
+          const maxCols = Math.max(...tableRows.map(row => row.length));
+          const normalizedRows = tableRows.map(row => {
+            while (row.length < maxCols) { row.push(''); }
+            return row;
+          });
 
-  // 【核心修改】根据列数动态计算字号
-  let tableFontSize = 10; // 默认字号
-  if (maxCols >= 8) tableFontSize = 8;
-  if (maxCols >= 10) tableFontSize = 7;
-  if (maxCols >= 12) tableFontSize = 6;
-  if (maxCols >= 15) tableFontSize = 5; // 超过15列的极限情况
+          // 根据列数动态计算字号
+          let tableFontSize = 10;
+          if (maxCols >= 8) tableFontSize = 8;
+          if (maxCols >= 10) tableFontSize = 7;
+          if (maxCols >= 12) tableFontSize = 6;
+          if (maxCols >= 15) tableFontSize = 5;
 
-  console.log(`📊 表格共 ${maxCols} 列，自适应字号: ${tableFontSize}px`);
+          // 动态列宽：让最后一列获得足够空间
+          let colWidths = [];
+          if (maxCols > 2) {
+            colWidths = Array(maxCols - 1).fill('auto').concat(['*']);
+          } else {
+            colWidths = Array(maxCols).fill('*');
+          }
 
-  // 动态列宽：前几列宽度较小，最后一列占据剩余空间
-let colWidths = [];
-if (maxCols > 2) {
-  // 前面列按内容自动计算宽度，最后一列占剩余宽度
-  colWidths = Array(maxCols - 1).fill('auto').concat(['*']);
-} else {
-  colWidths = Array(maxCols).fill('*');
-}
-
-content.push({
-  table: {
-    headerRows: 1,
-    widths: colWidths,  // 使用动态计算后的宽度
-    body: normalizedRows
-  },
-  layout: 'lightHorizontalLines',
-  margin: [0, 6],
-  fontSize: tableFontSize,
-  dontBreakRows: true // 防止表格行在跨页时被切成两半
-});
-}
-continue;
-      }
-
-      // 页眉页脚注释（旧标记，兼容）
-      if (line.startsWith('<header>') || line.startsWith('<footer>') || line.startsWith('<note>')) {
-        const cleanText = line.replace(/<[^>]+>/g, '');
-        content.push({ text: cleanText, style: 'note' });
-        i++;
+          content.push({
+            table: {
+              headerRows: 1,
+              widths: colWidths,
+              body: normalizedRows
+            },
+            layout: 'lightHorizontalLines',
+            margin: [0, 6],
+            fontSize: tableFontSize,
+            dontBreakRows: true
+          });
+        }
         continue;
       }
 
-      // 普通段落：手动添加两个全角空格实现首行缩进
+      // 普通段落：添加两个全角空格实现首行缩进
       content.push({
         text: '\u3000\u3000' + line,
         style: 'paragraph'
@@ -1464,9 +1432,8 @@ continue;
       i++;
     }
 
+    // ================== 4. 文档结构定义 ==================
     const isAiMode = mode === 'ai';
-
-    // 文档结构定义
     const docDefinition = {
       pageSize: 'A4',
       pageMargins: [40, 40, 40, 40],
@@ -1488,11 +1455,12 @@ continue;
           lineHeight: 1.4,
           alignment: 'justify',
           preserveLeadingSpaces: true
-        },
-        note: { fontSize: 10, color: '#666', margin: [0, 2, 0, 2], bold: false }
+        }
       },
-      content: content,
-      
+      content: content
+    }; // 👈 这个分号是必须的，之前你的代码少了它导致报错
+
+    // ================== 5. 生成并返回 PDF ==================
     const pdf = pdfMake.createPdf(docDefinition);
     return new Promise((resolve) => {
       pdf.getBlob((blob) => {
