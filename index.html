@@ -1077,49 +1077,14 @@ async function extractPDF(file) {
 }
 
   // ====================callProxy 翻译代理函数 ====================
-
-  /**
- * 统一翻译代理函数
- * 支持两种翻译模式：
- * - 'normal'：普通翻译（腾讯云翻译 + DeepSeek 排版），成本较低
- * - 'ai'：AI 智能翻译（完全使用 DeepSeek 翻译 + 排版 + 润色），质量更高
- *
- * 本函数预留了费用检查接口 checkUserQuota()，后续接入支付后，
- * 可在此处增加用户权益验证，未付费用户将无法使用对应模式。
- *
- * @param {string} text - 待翻译的文本
- * @param {string} target - 目标语言代码
- * @param {string} mode - 翻译模式，'normal' 或 'ai'，默认 'normal'
- * @returns {string} 翻译后的 Markdown 文本
+/**
+ * 统一翻译代理函数（支持长文档按页拆分，防止表格被截断）
+ * @param {string} text - 待翻译文本
+ * @param {string} target - 目标语言
+ * @param {string} mode - 翻译模式（'normal' 或 'ai'）
+ * @returns {string} 翻译后的文本
  */
 async function callProxy(text, target, mode = 'normal') {
-  // ========== 费用检查预留接口 ==========
-  // 后续接入支付系统后，可根据用户会员状态和模式消耗额度
-  // 目前直接放行，不限制使用
-  const canUse = await checkUserQuota(mode);
-  if (!canUse) {
-    throw new Error('您的额度不足，请充值后使用');
-  }
-
-  // ========== AI 智能翻译模式 ==========
-  if (mode === 'ai') {
-    console.log('🤖 使用 AI 智能翻译模式（DeepSeek 翻译 + 排版 + 润色）');
-    const res = await fetch(API_PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, target, engine: 'deepseek' })
-    });
-    const data = await res.json();
-    if (data.code === 0) {
-      console.log('✅ AI 智能翻译完成');
-      return data.result;
-    } else {
-      throw new Error(data.result || 'AI 智能翻译失败');
-    }
-  }
-
-  // ========== 普通翻译模式 ==========
-  // 腾讯云翻译 + DeepSeek 排版优化
   const langMap = {
     'zh-CN': 'zh', 'zh': 'zh', 'en': 'en', 'ja': 'ja',
     'ko': 'ko', 'fr': 'fr', 'de': 'de', 'es': 'es', 'ru': 'ru',
@@ -1128,6 +1093,58 @@ async function callProxy(text, target, mode = 'normal') {
   const tencentTarget = langMap[target] || target;
   const MAX_CHUNK = 3000;
 
+  // ========== AI 智能翻译模式 ==========
+  if (mode === 'ai') {
+    console.log('🤖 使用 AI 智能翻译模式');
+    
+    // 【核心修改】长文档按页拆分（利用之前提取时插入的 --- 分页符）
+    // 如果文本包含分页符，且长度超过 3000，则按页拆分翻译
+    let pages = text.split(/\n\s*---\s*\n/);
+    
+    if (pages.length > 1) {
+      console.log(`📄 长文档共 ${pages.length} 页，开始逐页翻译...`);
+      const translatedPages = [];
+      for (let i = 0; i < pages.length; i++) {
+        const pageText = pages[i].trim();
+        if (!pageText) continue;
+        
+        console.log(`⏳ 正在翻译第 ${i + 1}/${pages.length} 页...`);
+        const res = await fetch(API_PROXY_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: pageText, target, engine: 'deepseek' })
+        });
+        const data = await res.json();
+        if (data.code === 0) {
+          translatedPages.push(data.result);
+        } else {
+          console.warn(`第 ${i + 1} 页翻译失败:`, data.result);
+          translatedPages.push(pageText); // 失败时降级使用原文
+        }
+        
+        // 避免请求过快触发 API 并发限制
+        await new Promise(r => setTimeout(r, 800));
+      }
+      console.log('✅ AI 智能翻译完成（逐页）');
+      return translatedPages.join('\n\n---\n\n');
+    } else {
+      // 短文档直接整篇翻译
+      const res = await fetch(API_PROXY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, target, engine: 'deepseek' })
+      });
+      const data = await res.json();
+      if (data.code === 0) {
+        console.log('✅ AI 智能翻译完成');
+        return data.result;
+      } else {
+        throw new Error(data.result || 'AI 智能翻译失败');
+      }
+    }
+  }
+
+  // ========== 普通翻译模式（腾讯云翻译 + DeepSeek 排版） ==========
   let translatedText = '';
 
   if (text.length <= MAX_CHUNK) {
