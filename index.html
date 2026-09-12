@@ -1044,17 +1044,16 @@ async function extractPDF(file) {
                 rowStr = lineTexts.map(item => item.str).join(' ');
             }
 
-            // 根据位置添加页眉或页脚标记
-            if (isHeader) {
-                text += '<<HEADER>>' + rowStr.trim() + '<<END_HEADER>>\n';
-            } else if (isFooter) {
-                text += '<<FOOTER>>' + rowStr.trim() + '<<END_FOOTER>>\n';
-            } else {
-                text += rowStr.trim() + '\n';
-            }
-
-            lineTexts = [];
-        };
+            // 添加标记
+   if (isHeader || isFooter) {
+    // 直接丢弃页眉页脚，不添加到正文，避免排版混乱
+    lineTexts = [];
+    return;
+} else if (isTableRow) {
+    text += rowStr.trim() + '\n';
+} else {
+    text += colTag + rowStr.trim() + '\n';
+}
 
         for (const item of sorted) {
             const currentY = item.transform[5];
@@ -1323,6 +1322,15 @@ async function genPDF(text, name, mode = 'normal') {
 
     while (i < lines.length) {
      let line = lines[i].trim();
+     // 【新增】处理特殊数学符号，防止显示为方框
+line = line.replace(/×/g, 'x'); // 乘号统一换成小写 x
+line = line.replace(/−/g, '-'); // 特殊减号换成普通横杠
+line = line.replace(/⁻/g, '-'); // 上标负号换普通横杠
+line = line.replace(/☒/g, ''); // 无法识别的乱码直接删掉
+// 把上标数字替换为普通数字，保证能显示
+line = line.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, function(match) {
+    return {'⁰':'0', '¹':'1', '²':'2', '³':'3', '⁴':'4', '⁵':'5', '⁶':'6', '⁷':'7', '⁸':'8', '⁹':'9'}[match];
+});
      line = line.replace(/\*\*/g, '');// 去掉加粗标记
     // ================== 过滤页眉页脚乱码 ==================
 // 针对 MDPI / Frontiers 等期刊常见的乱码内容进行拦截
@@ -1484,30 +1492,7 @@ continue;
         note: { fontSize: 10, color: '#666', margin: [0, 2, 0, 2], bold: false }
       },
       content: content,
-      // 页眉：如果有页眉文本，放在页面顶部居中
-      header: (currentPage, pageCount) => {
-        if (headerLines.length === 0) return null;
-        return {
-          text: headerLines[0],
-          fontSize: 9,
-          color: '#666',
-          alignment: 'center',
-          margin: [40, 20, 40, 0]
-        };
-      },
-      // 页脚：如果有页脚文本，放在页面底部居中，并添加页码
-      footer: (currentPage, pageCount) => {
-        const footerText = footerLines.length > 0 ? footerLines[0] + '    ' : '';
-        return {
-          text: footerText + '页码 ' + currentPage + ' / ' + pageCount,
-          fontSize: 9,
-          color: '#666',
-          alignment: 'center',
-          margin: [40, 0, 40, 20]
-        };
-      }
-    };
-
+      
     const pdf = pdfMake.createPdf(docDefinition);
     return new Promise((resolve) => {
       pdf.getBlob((blob) => {
