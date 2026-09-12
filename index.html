@@ -983,7 +983,7 @@ async function extractPDF(file) {
     let text = '';
 
     // 列间距阈值：同一行内两个文本的 x 坐标差超过该值，视为表格新列
-    const COLUMN_GAP_THRESHOLD = 8;   // 降低阈值，让相邻列更易区分
+    const COLUMN_GAP_THRESHOLD = 3;   // 降低阈值，让相邻列更易区分
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
@@ -1386,25 +1386,35 @@ line = line.replace(/\*\*/g, '');
           i++;
         }
         if (tableRows.length > 0) {
-          const maxCols = Math.max(...tableRows.map(row => row.length));
-          const normalizedRows = tableRows.map(row => {
-            while (row.length < maxCols) {
-              row.push('');
-            }
-            return row;
-          });
-          content.push({
-            table: {
-              headerRows: 1,
-              widths: Array(maxCols).fill('*'),
-              body: normalizedRows
-            },
-            layout: 'lightHorizontalLines',
-            margin: [0, 6],
-            fontSize: 10   // 表格字体稍小，适应多列
-          });
-        }
-        continue;
+  const maxCols = Math.max(...tableRows.map(row => row.length));
+  const normalizedRows = tableRows.map(row => {
+    while (row.length < maxCols) {
+      row.push('');
+    }
+    return row;
+  });
+
+  // 【核心修改】根据列数动态计算字号
+  let tableFontSize = 10; // 默认字号
+  if (maxCols >= 8) tableFontSize = 8;
+  if (maxCols >= 10) tableFontSize = 7;
+  if (maxCols >= 12) tableFontSize = 6;
+  if (maxCols >= 15) tableFontSize = 5; // 超过15列的极限情况
+
+  console.log(`📊 表格共 ${maxCols} 列，自适应字号: ${tableFontSize}px`);
+
+  content.push({
+    table: {
+      headerRows: 1,
+      widths: Array(maxCols).fill('*'),
+      body: normalizedRows
+    },
+    layout: 'lightHorizontalLines',
+    margin: [0, 6],
+    fontSize: tableFontSize  // 使用动态计算出的字号
+  });
+}
+continue;
       }
 
       // 页眉页脚注释（旧标记，兼容）
