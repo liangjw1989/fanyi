@@ -1323,9 +1323,22 @@ async function genPDF(text, name, mode = 'normal') {
 
     while (i < lines.length) {
      let line = lines[i].trim();
-// 去掉 Markdown 加粗标记 **
-line = line.replace(/\*\*/g, '');
-
+     line = line.replace(/\*\*/g, '');// 去掉加粗标记
+    // ================== 过滤页眉页脚乱码 ==================
+// 针对 MDPI / Frontiers 等期刊常见的乱码内容进行拦截
+if (
+  line.includes('Frontiers in') || 
+  line.includes('frontiersin.org') ||
+  line.includes('doi:') ||
+  line.includes('https://') ||
+  line.includes('MDPI') ||
+  line.includes('Basel') ||
+  line.match(/^[A-Za-z\s]+\d+\s*\|\s*[A-Za-z]+/) // 匹配类似 "Frontiers in Endocrinology 04"
+) {
+  i++; // 跳过这一行，不放入 PDF
+  continue;
+}
+// ======================================================
       // 空行：段落间距（适当减小）
       if (line === '') {
         content.push({ text: '', margin: [0, 2] });
@@ -1403,16 +1416,26 @@ line = line.replace(/\*\*/g, '');
 
   console.log(`📊 表格共 ${maxCols} 列，自适应字号: ${tableFontSize}px`);
 
-  content.push({
-    table: {
-      headerRows: 0,
-      widths: Array(maxCols).fill('*'),
-      body: normalizedRows
-    },
-    layout: 'lightHorizontalLines',
-    margin: [0, 6],
-    fontSize: tableFontSize  // 使用动态计算出的字号
-  });
+  // 动态列宽：前几列宽度较小，最后一列占据剩余空间
+let colWidths = [];
+if (maxCols > 2) {
+  // 前面列按内容自动计算宽度，最后一列占剩余宽度
+  colWidths = Array(maxCols - 1).fill('auto').concat(['*']);
+} else {
+  colWidths = Array(maxCols).fill('*');
+}
+
+content.push({
+  table: {
+    headerRows: 1,
+    widths: colWidths,  // 使用动态计算后的宽度
+    body: normalizedRows
+  },
+  layout: 'lightHorizontalLines',
+  margin: [0, 6],
+  fontSize: tableFontSize,
+  dontBreakRows: true // 防止表格行在跨页时被切成两半
+});
 }
 continue;
       }
