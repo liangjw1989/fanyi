@@ -316,23 +316,23 @@
   <!-- 顶部栏 -->
   <div class="card top-bar">
     <div class="brand">
-      <div class="brand-icon"><i class="fas fa-language"></i></div>
+      <div class="brand-icon">🌐</div>
       <div class="brand-text">
         <h1>灵译</h1>
         <span>文档翻译与格式转换神器</span>
       </div>
     </div>
     <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
-      <span id="loginStatus" style="font-size:0.85rem; color:#475569; font-weight:500;"></span>
-      <button class="btn btn-outline btn-sm" id="loginBtn"><i class="fas fa-user"></i> 登录</button>
-      <button class="btn btn-outline btn-sm" id="historyBtn" style="display:none;"><i class="fas fa-history"></i> 记录</button>
-      <button class="btn btn-outline btn-sm" id="adminBtn" style="display:none;"><i class="fas fa-crown"></i> 管理</button>
-      <button class="btn btn-outline btn-sm" id="logoutBtn" style="display:none;"><i class="fas fa-sign-out-alt"></i> 退出</button>
-      <div class="qr-section" id="qrSection">
-        <div class="qr-code-wrapper"><div class="qr-code-inner" id="qrContainer"></div></div>
-        <span class="qr-text">扫码打开</span>
-      </div>
-    </div>
+  <span id="loginStatus" style="font-size:0.85rem; color:#475569; font-weight:500;"></span>
+  <button class="btn btn-outline btn-sm" id="loginBtn">👤 登录</button>
+  <button class="btn btn-outline btn-sm" id="historyBtn" style="display:none;">🕐 记录</button>
+  <button class="btn btn-outline btn-sm" id="adminBtn" style="display:none;">👑 管理</button>
+  <button class="btn btn-outline btn-sm" id="logoutBtn" style="display:none;">🚪 退出</button>
+  <div class="qr-section" id="qrSection">
+    <div class="qr-code-wrapper"><div class="qr-code-inner" id="qrContainer"></div></div>
+    <span class="qr-text">扫码打开</span>
+  </div>
+</div>
   </div>
 
   <!-- 功能标签页 -->
@@ -343,28 +343,32 @@
     </div>
 
     <!-- 翻译模块 -->
-    <div id="translateModule">
-      <div class="upload-area" id="translateUpload" style="position:relative;">
-        <i class="fas fa-cloud-upload-alt"></i>
-        <div class="upload-title">点击上传需翻译的文件</div>
-        <div class="upload-hint">PDF · Word · TXT · 图片</div>
-        <div class="upload-hint mobile-warning" style="display:none; color:#e67e22; margin-top:0.5rem;">⚠️ 如无法选择文档，请点击右上角「…」→「在浏览器中打开」</div>
-        <input type="file" id="translateFileInput" multiple accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" style="position:absolute; opacity:0; width:100%; height:100%; top:0; left:0; cursor:pointer; z-index:10;">
-      </div>
-      <div id="translateFileList"></div>
+<div id="translateModule">
+  <label for="translateFileInput" class="upload-area" id="translateUpload" style="cursor:pointer; display:block;">
+    <div style="font-size:2.5rem; color:var(--primary); margin-bottom:0.5rem;">📄</div>
+    <div class="upload-title">点击上传需翻译的文件</div>
+    <div class="upload-hint">PDF · Word · TXT · 图片</div>
+    <div class="upload-hint mobile-warning" style="display:none; color:#e67e22; margin-top:0.5rem;">
+      ⚠️ 如无法选择文档，请点击右上角「…」→「在浏览器中打开」
     </div>
+  </label>
+  <input type="file" id="translateFileInput" multiple accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" style="display:none;">
+  <div id="translateFileList"></div>
+</div>
 
     <!-- 转换模块 -->
-    <div id="convertModule" style="display:none;">
-      <div class="upload-area" id="convertUpload" style="position:relative;">
-        <i class="fas fa-exchange-alt"></i>
-        <div class="upload-title">点击上传需转换格式的文件</div>
-        <div class="upload-hint">支持 PDF · Word · TXT · 图片</div>
-        <div class="upload-hint mobile-warning" style="display:none; color:#e67e22; margin-top:0.5rem;">⚠️ 如无法选择文档，请点击右上角「…」→「在浏览器中打开」</div>
-        <input type="file" id="convertFileInput" multiple accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" style="position:absolute; opacity:0; width:100%; height:100%; top:0; left:0; cursor:pointer; z-index:10;">
-      </div>
-      <div id="convertFileList"></div>
+<div id="convertModule" style="display:none;">
+  <label for="convertFileInput" class="upload-area" id="convertUpload" style="cursor:pointer; display:block;">
+    <div style="font-size:2.5rem; color:var(--primary); margin-bottom:0.5rem;">🔄</div>
+    <div class="upload-title">点击上传需转换格式的文件</div>
+    <div class="upload-hint">支持 PDF · Word · TXT · 图片</div>
+    <div class="upload-hint mobile-warning" style="display:none; color:#e67e22; margin-top:0.5rem;">
+      ⚠️ 如无法选择文档，请点击右上角「…」→「在浏览器中打开」
     </div>
+  </label>
+  <input type="file" id="convertFileInput" multiple accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" style="display:none;">
+  <div id="convertFileList"></div>
+</div>
   </div>
 
   <!-- 已完成文档列表 -->
@@ -804,13 +808,13 @@ function renderFileItem(f, type) {
 
     // 生成操作按钮和删除按钮
     const actionLabel = type === 'translate' ? '翻译' : '转换';
-    const actionBtn = `<button class="btn btn-primary btn-sm process-btn" data-id="${f.id}"><i class="fas fa-play"></i> ${actionLabel}</button>`;
-    const deleteBtn = `<button class="btn btn-danger btn-sm delete-btn" data-id="${f.id}"><i class="fas fa-trash"></i></button>`;
+    const actionBtn = `<button class="btn btn-primary btn-sm process-btn" data-id="${f.id}">▶ ${actionLabel}</button>`;
+    const deleteBtn = `<button class="btn btn-danger btn-sm delete-btn" data-id="${f.id}">🗑</button>`;
 
     // 返回完整的文件项 HTML
     return `
   <div class="file-item" data-file-id="${f.id}">
-    <i class="fas fa-file file-icon"></i>
+    <span style="font-size:1.5rem; color:var(--primary);">📄</span>
     <div class="file-info">
       <div class="file-name">${escapeHtml(f.name)}</div>
       <div class="progress-bar"><div class="progress-fill" style="width:${f.progress}%"></div></div>
